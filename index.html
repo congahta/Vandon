@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>Quét Vận Đơn</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+  <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -484,7 +484,7 @@
 
 <!-- ══════════ SCANNER SCREEN ══════════ -->
 <div class="screen" id="scannerScreen">
-  <div id="scannerVideo"></div>
+  <video id="scannerVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
   <div class="scanner-overlay">
     <div class="scanner-frame">
       <div class="scanner-line"></div>
@@ -572,7 +572,7 @@
 // CONFIG — điền API URL sau khi setup Google Apps Script
 // ══════════════════════════════════
 const CONFIG = {
-  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzBXGmElcY9ndnhljArBMOL_dX3nZSx6ZfbvjGuR0kO_4nsZHeLBWcJINsrEN5-YPYWmQ/exec', // sẽ điền sau
+  SCRIPT_URL: 'PASTE_SCRIPT_URL_HERE', // sẽ điền sau
   APP_VERSION: '1.0.0'
 };
 
@@ -668,49 +668,76 @@ function goBack() {
 }
 
 // ══════════════════════════════════
-// SCANNER
+// SCANNER — ZXing (QR + Barcode 1D/2D)
 // ══════════════════════════════════
-function startScan() {
+let zxingReader = null;
+let scannerActive = false;
+
+async function startScan() {
   showScreen('scannerScreen');
-  const container = document.getElementById('scannerVideo');
+  scannerActive = true;
 
-  Quagga.init({
-    inputStream: {
-      name: 'Live',
-      type: 'LiveStream',
-      target: container,
-      constraints: {
-        facingMode: 'environment',
-        width: { min: 640 },
-        height: { min: 480 }
+  try {
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+      ZXing.BarcodeFormat.QR_CODE,
+      ZXing.BarcodeFormat.CODE_128,
+      ZXing.BarcodeFormat.CODE_39,
+      ZXing.BarcodeFormat.EAN_13,
+      ZXing.BarcodeFormat.EAN_8,
+      ZXing.BarcodeFormat.UPC_A,
+      ZXing.BarcodeFormat.UPC_E,
+      ZXing.BarcodeFormat.ITF,
+      ZXing.BarcodeFormat.CODABAR,
+      ZXing.BarcodeFormat.DATA_MATRIX,
+      ZXing.BarcodeFormat.PDF_417,
+    ]);
+
+    zxingReader = new ZXing.BrowserMultiFormatReader(hints, {
+      delayBetweenScanAttempts: 80,
+      delayBetweenScanSuccess: 500
+    });
+
+    const videoEl = document.getElementById('scannerVideo');
+
+    await zxingReader.decodeFromConstraints(
+      {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        }
+      },
+      videoEl,
+      (result, err) => {
+        if (!scannerActive) return;
+        if (result) {
+          const code = result.getText();
+          if (code && code.length > 0) {
+            scannerActive = false;
+            navigator.vibrate && navigator.vibrate([80, 30, 80]);
+            stopScan();
+            onBarcodeDetected(code);
+          }
+        }
       }
-    },
-    decoder: {
-      readers: ['code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader', 'upc_reader']
-    },
-    locate: true
-  }, err => {
-    if (err) {
-      console.error(err);
-      showToast('Không thể mở camera', true);
-      showScreen(state.maVanDon ? 'formScreen' : 'appScreen');
-      return;
-    }
-    Quagga.start();
-  });
-
-  Quagga.onDetected(result => {
-    const code = result.codeResult.code;
-    if (code) {
-      navigator.vibrate && navigator.vibrate(80);
-      stopScan();
-      onBarcodeDetected(code);
-    }
-  });
+    );
+  } catch(err) {
+    console.error('Scanner error:', err);
+    showToast('Không thể mở camera. Kiểm tra quyền truy cập!', true);
+    showScreen(state.maVanDon ? 'formScreen' : 'appScreen');
+  }
 }
 
 function stopScan() {
-  try { Quagga.stop(); } catch(e) {}
+  scannerActive = false;
+  try {
+    if (zxingReader) {
+      zxingReader.reset();
+      zxingReader = null;
+    }
+  } catch(e) { console.log('Stop scan:', e); }
 }
 
 function onBarcodeDetected(code) {
@@ -792,7 +819,7 @@ async function handleSubmit() {
     showToast('Vui lòng chọn loại vấn đề', true); return;
   }
 
-  if (CONFIG.SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbzBXGmElcY9ndnhljArBMOL_dX3nZSx6ZfbvjGuR0kO_4nsZHeLBWcJINsrEN5-YPYWmQ/exec') {
+  if (CONFIG.SCRIPT_URL === 'PASTE_SCRIPT_URL_HERE') {
     // Demo mode — chưa kết nối Sheet
     showLoading('Đang lưu...');
     await sleep(1200);
