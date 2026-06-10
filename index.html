@@ -482,10 +482,12 @@
   </div>
 </div>
 
-<!-- ══════════ SCANNER SCREEN ══════════ -->
-<div class="screen" id="scannerScreen">
-  <video id="scannerVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
-  <div class="scanner-overlay">
+<!-- ══════════ CAMERA SCREEN (dùng chung cho scan + chụp) ══════════ -->
+<div class="screen" id="cameraScreen">
+  <video id="cameraVideo" autoplay playsinline muted style="width:100%;flex:1;object-fit:cover;position:relative;"></video>
+
+  <!-- Overlay quét mã -->
+  <div id="overlayScanner" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;">
     <div class="scanner-frame">
       <div class="scanner-line"></div>
       <div class="scanner-corner tl"></div>
@@ -493,26 +495,25 @@
       <div class="scanner-corner bl"></div>
       <div class="scanner-corner br"></div>
     </div>
-    <div class="scanner-hint-text">Đưa mã vạch vào khung để quét</div>
-    <button class="btn-cancel-scan" onclick="stopScan()">Huỷ</button>
+    <div class="scanner-hint-text" style="margin-top:20px;">Đưa mã vạch vào khung để quét</div>
   </div>
-</div>
 
-<!-- ══════════ CAMERA SCREEN ══════════ -->
-<div class="screen" id="cameraScreen">
-  <video id="cameraVideo" autoplay playsinline muted style="width:100%;flex:1;object-fit:cover;"></video>
-  <div style="background:#000;padding:24px;display:flex;flex-direction:column;align-items:center;gap:16px;">
-    <div style="font-size:13px;color:#999;">Căn chỉnh ảnh rồi nhấn chụp</div>
-    <div style="display:flex;align-items:center;gap:32px;">
-      <button onclick="cancelCamera()" style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:white;font-size:20px;cursor:pointer;">✕</button>
-      <button onclick="capturePhoto()" style="width:80px;height:80px;border-radius:50%;background:white;border:4px solid rgba(255,255,255,0.5);cursor:pointer;display:flex;align-items:center;justify-content:center;">
-        <div style="width:64px;height:64px;border-radius:50%;background:white;border:3px solid #ddd;"></div>
-      </button>
-      <div style="width:48px;"></div>
+  <!-- Overlay chụp ảnh -->
+  <div id="overlayCapture" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:48px;">
+    <div id="captureCode" style="background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);color:white;padding:10px 24px;border-radius:50px;font-size:15px;font-weight:600;margin-bottom:24px;"></div>
+    <div style="display:flex;align-items:center;gap:40px;">
+      <button onclick="retakeScan()" style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);color:white;font-size:13px;cursor:pointer;pointer-events:all;">Quét<br>lại</button>
+      <button onclick="capturePhoto()" style="width:80px;height:80px;border-radius:50%;background:white;border:5px solid rgba(255,255,255,0.5);cursor:pointer;pointer-events:all;"></button>
+      <div style="width:52px;"></div>
     </div>
   </div>
+
+  <!-- Nút huỷ -->
+  <button id="btnCancelCamera" onclick="cancelCamera()" style="position:absolute;top:52px;left:20px;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);color:white;border-radius:50px;padding:10px 20px;font-size:14px;cursor:pointer;">✕ Huỷ</button>
+
   <canvas id="cameraCanvas" style="display:none;"></canvas>
 </div>
+
 
 <!-- ══════════ FORM SCREEN ══════════ -->
 <div class="screen" id="formScreen">
@@ -677,22 +678,50 @@ function showScreen(id) {
 }
 
 function goBack() {
-  stopScan();
-  stopCamera();
+  stopZxing();
+  stopCameraStream();
   showScreen('appScreen');
   resetForm();
 }
 
 // ══════════════════════════════════
-// SCANNER — ZXing (QR + Barcode 1D/2D)
+// CAMERA UNIFIED (scan + chụp ảnh dùng chung 1 stream)
 // ══════════════════════════════════
+let cameraStream = null;
 let zxingReader = null;
-let scannerActive = false;
+let cameraMode = 'scan'; // 'scan' | 'capture'
 
 async function startScan() {
-  showScreen('scannerScreen');
-  scannerActive = true;
+  cameraMode = 'scan';
+  document.getElementById('overlayScanner').style.display = 'flex';
+  document.getElementById('overlayCapture').style.display = 'none';
+  showScreen('cameraScreen');
 
+  // Nếu stream đã có → dùng lại, không cần xin quyền lại
+  if (!cameraStream) {
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      });
+    } catch(err) {
+      showToast('Không thể mở camera. Kiểm tra quyền truy cập!', true);
+      showScreen('appScreen');
+      return;
+    }
+  }
+
+  const video = document.getElementById('cameraVideo');
+  video.srcObject = cameraStream;
+
+  // Bắt đầu quét mã
+  startZxing(video);
+}
+
+function startZxing(video) {
   try {
     const hints = new Map();
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
@@ -712,113 +741,114 @@ async function startScan() {
 
     zxingReader = new ZXing.BrowserMultiFormatReader(hints, {
       delayBetweenScanAttempts: 80,
-      delayBetweenScanSuccess: 500
+      delayBetweenScanSuccess: 1000
     });
 
-    const videoEl = document.getElementById('scannerVideo');
-
-    await zxingReader.decodeFromConstraints(
-      {
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        }
-      },
-      videoEl,
-      (result, err) => {
-        if (!scannerActive) return;
-        if (result) {
-          const code = result.getText();
-          if (code && code.length > 0) {
-            scannerActive = false;
-            navigator.vibrate && navigator.vibrate([80, 30, 80]);
-            stopScan();
-            onBarcodeDetected(code);
-          }
+    zxingReader.decodeFromStream(cameraStream, video, (result, err) => {
+      if (cameraMode !== 'scan') return;
+      if (result) {
+        const code = result.getText();
+        if (code) {
+          navigator.vibrate && navigator.vibrate([80, 30, 80]);
+          onBarcodeDetected(code);
         }
       }
-    );
+    });
   } catch(err) {
-    console.error('Scanner error:', err);
-    showToast('Không thể mở camera. Kiểm tra quyền truy cập!', true);
-    showScreen(state.maVanDon ? 'formScreen' : 'appScreen');
+    console.error('ZXing error:', err);
   }
+}
+
+function stopZxing() {
+  try {
+    if (zxingReader) { zxingReader.reset(); zxingReader = null; }
+  } catch(e) {}
 }
 
 function stopScan() {
-  scannerActive = false;
-  try {
-    if (zxingReader) {
-      zxingReader.reset();
-      zxingReader = null;
-    }
-  } catch(e) { console.log('Stop scan:', e); }
+  stopZxing();
 }
 
 function onBarcodeDetected(code) {
+  stopZxing(); // dừng quét nhưng GIỮ stream
   state.maVanDon = code;
   document.getElementById('displayMaVanDon').textContent = code;
-  // Tự động mở camera chụp ảnh luôn
-  openCamera();
+  document.getElementById('captureCode').textContent = '📦 ' + code;
+
+  // Chuyển sang chế độ chụp ảnh — CÙNG màn hình, không đóng stream
+  cameraMode = 'capture';
+  document.getElementById('overlayScanner').style.display = 'none';
+  document.getElementById('overlayCapture').style.display = 'flex';
 }
 
-// ══════════════════════════════════
-// CAMERA SCREEN
-// ══════════════════════════════════
-let cameraStream = null;
-
-async function openCamera() {
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
-    });
-    const video = document.getElementById('cameraVideo');
-    video.srcObject = cameraStream;
-    showScreen('cameraScreen');
-  } catch(err) {
-    showToast('Không thể mở camera: ' + err.message, true);
-  }
+function retakeScan() {
+  // Quét lại từ màn hình camera hiện tại
+  cameraMode = 'scan';
+  state.maVanDon = '';
+  document.getElementById('overlayScanner').style.display = 'flex';
+  document.getElementById('overlayCapture').style.display = 'none';
+  const video = document.getElementById('cameraVideo');
+  startZxing(video);
 }
 
 function capturePhoto() {
   const video = document.getElementById('cameraVideo');
   const canvas = document.getElementById('cameraCanvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  canvas.getContext('2d').drawImage(video, 0, 0);
 
-  // Nén ảnh xuống còn ~800px để tiết kiệm dung lượng
+  // Nén ảnh
   const maxW = 1200;
   let w = canvas.width, h = canvas.height;
   if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
   const resized = document.createElement('canvas');
   resized.width = w; resized.height = h;
   resized.getContext('2d').drawImage(canvas, 0, 0, w, h);
-
   state.photoBase64 = resized.toDataURL('image/jpeg', 0.85);
-  stopCamera();
 
-  // Cập nhật preview
+  navigator.vibrate && navigator.vibrate(60);
+
+  // Cập nhật preview trong form
   const preview = document.getElementById('photoPreview');
   preview.classList.add('has-photo');
   preview.innerHTML = `<img src="${state.photoBase64}" alt="Ảnh vận đơn">`;
 
-  navigator.vibrate && navigator.vibrate(60);
+  // Giữ stream, về form
   showScreen('formScreen');
 }
 
 function cancelCamera() {
-  stopCamera();
-  showScreen('formScreen');
+  stopZxing();
+  stopCameraStream();
+  showScreen('appScreen');
+  resetForm();
 }
 
-function stopCamera() {
+function openCamera() {
+  // Tap vào ảnh trong form → mở lại camera chụp lại
+  cameraMode = 'capture';
+  document.getElementById('overlayScanner').style.display = 'none';
+  document.getElementById('overlayCapture').style.display = 'flex';
+  document.getElementById('captureCode').textContent = '📦 ' + (state.maVanDon || '');
+  showScreen('cameraScreen');
+
+  if (!cameraStream) {
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+    }).then(stream => {
+      cameraStream = stream;
+      document.getElementById('cameraVideo').srcObject = stream;
+    }).catch(err => {
+      showToast('Không thể mở camera!', true);
+      showScreen('formScreen');
+    });
+  } else {
+    document.getElementById('cameraVideo').srcObject = cameraStream;
+  }
+}
+
+function stopCameraStream() {
   if (cameraStream) {
     cameraStream.getTracks().forEach(t => t.stop());
     cameraStream = null;
@@ -916,10 +946,8 @@ function onSubmitSuccess() {
   updateStats();
   showToast('✓ Đã lưu ' + state.maVanDon);
   resetForm();
-  // Tự động mở scanner để quét đơn tiếp theo
-  setTimeout(() => {
-    startScan();
-  }, 600);
+  // Stream vẫn còn → tự mở scanner luôn không cần xin quyền lại
+  setTimeout(() => startScan(), 400);
 }
 
 // ══════════════════════════════════
