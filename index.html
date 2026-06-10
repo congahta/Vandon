@@ -6,546 +6,206 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>Quét Vận Đơn</title>
-  <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
     :root {
-      --bg: #0F1117;
-      --surface: #1A1D27;
-      --surface2: #22263A;
-      --accent: #4F8EF7;
-      --accent2: #7C5CFC;
-      --success: #2ECC8A;
-      --danger: #F75C5C;
-      --text: #F0F2FF;
-      --text2: #8B92B8;
-      --border: #2A2F45;
-      --radius: 16px;
-      --radius-sm: 10px;
+      --bg: #0F1117; --surface: #1A1D27; --surface2: #22263A;
+      --accent: #4F8EF7; --accent2: #7C5CFC;
+      --success: #2ECC8A; --danger: #F75C5C;
+      --text: #F0F2FF; --text2: #8B92B8;
+      --border: #2A2F45; --radius: 16px; --radius-sm: 10px;
     }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      min-height: -webkit-fill-available;
-      overflow-x: hidden;
-    }
-
-    /* ── SCREENS ── */
-    .screen { display: none; min-height: 100vh; min-height: -webkit-fill-available; flex-direction: column; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+    .screen { display: none; min-height: 100vh; flex-direction: column; }
     .screen.active { display: flex; }
 
-    /* ── LOGIN ── */
-    #loginScreen {
-      align-items: center;
-      justify-content: center;
-      padding: 32px 24px;
-      background: radial-gradient(ellipse at 50% 0%, #1e2a4a 0%, var(--bg) 60%);
-    }
-    .login-logo {
-      width: 72px; height: 72px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border-radius: 20px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 32px;
-      margin-bottom: 24px;
-      box-shadow: 0 8px 32px rgba(79,142,247,0.3);
-    }
-    .login-title { font-size: 26px; font-weight: 700; margin-bottom: 6px; text-align: center; }
-    .login-sub { font-size: 14px; color: var(--text2); margin-bottom: 40px; text-align: center; }
+    /* LOGIN */
+    #loginScreen { align-items: center; justify-content: center; padding: 32px 24px; background: radial-gradient(ellipse at 50% 0%, #1e2a4a 0%, var(--bg) 60%); }
+    .login-logo { width: 72px; height: 72px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(79,142,247,0.3); }
+    .login-title { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+    .login-sub { font-size: 14px; color: var(--text2); margin-bottom: 40px; }
     .login-form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
     .input-group { display: flex; flex-direction: column; gap: 6px; }
     .input-group label { font-size: 13px; color: var(--text2); font-weight: 500; }
-    .input-field {
-      background: var(--surface);
-      border: 1.5px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 14px 16px;
-      font-size: 16px;
-      color: var(--text);
-      outline: none;
-      transition: border-color 0.2s;
-    }
+    .input-field { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; font-size: 16px; color: var(--text); outline: none; transition: border-color 0.2s; }
     .input-field:focus { border-color: var(--accent); }
-    .btn-primary {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: white;
-      border: none;
-      border-radius: var(--radius-sm);
-      padding: 16px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 8px;
-      transition: opacity 0.2s, transform 0.1s;
-    }
-    .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; border: none; border-radius: var(--radius-sm); padding: 16px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
     .login-error { color: var(--danger); font-size: 13px; text-align: center; display: none; }
 
-    /* ── MAIN APP ── */
+    /* APP SCREEN */
     #appScreen { background: var(--bg); }
-    .app-header {
-      background: var(--surface);
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--border);
-      position: sticky; top: 0; z-index: 10;
-    }
-    .header-left { display: flex; flex-direction: column; }
-    .header-greeting { font-size: 12px; color: var(--text2); }
+    .app-header { background: var(--surface); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
     .header-name { font-size: 16px; font-weight: 600; }
-    .btn-logout {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text2);
-      border-radius: 8px;
-      padding: 8px 14px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-
-    /* ── SCAN BUTTON ── */
-    .scan-hero {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 32px 24px;
-      gap: 20px;
-    }
-    .scan-btn {
-      width: 180px; height: 180px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border-radius: 50%;
-      border: none;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      cursor: pointer;
-      box-shadow: 0 0 0 0 rgba(79,142,247,0.4);
-      animation: pulse 2.5s infinite;
-      transition: transform 0.15s;
-    }
-    .scan-btn:active { transform: scale(0.95); }
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(79,142,247,0.4); }
-      70% { box-shadow: 0 0 0 24px rgba(79,142,247,0); }
-      100% { box-shadow: 0 0 0 0 rgba(79,142,247,0); }
-    }
-    .scan-btn-icon { font-size: 52px; }
-    .scan-btn-label { font-size: 15px; font-weight: 600; color: white; }
-    .scan-hint { font-size: 14px; color: var(--text2); text-align: center; }
-    .stats-row {
-      display: flex; gap: 12px; width: 100%; max-width: 360px;
-    }
-    .stat-card {
-      flex: 1;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 14px;
-      text-align: center;
-    }
+    .header-greeting { font-size: 12px; color: var(--text2); }
+    .btn-logout { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+    .scan-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; gap: 20px; }
+    .stats-row { display: flex; gap: 12px; width: 100%; max-width: 360px; }
+    .stat-card { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
     .stat-num { font-size: 24px; font-weight: 700; }
     .stat-label { font-size: 11px; color: var(--text2); margin-top: 2px; }
-    .stat-ok { color: var(--success); }
-    .stat-err { color: var(--danger); }
+    .stat-ok { color: var(--success); } .stat-err { color: var(--danger); }
+    .scan-btn { width: 180px; height: 180px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 50%; border: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; cursor: pointer; animation: pulse 2.5s infinite; }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(79,142,247,0.4)} 70%{box-shadow:0 0 0 24px rgba(79,142,247,0)} 100%{box-shadow:0 0 0 0 rgba(79,142,247,0)} }
+    .scan-btn-icon { font-size: 52px; }
+    .scan-btn-label { font-size: 15px; font-weight: 600; color: white; }
+    .scan-hint { font-size: 14px; color: var(--text2); }
 
-    /* ── SCANNER OVERLAY ── */
-    #scannerScreen {
-      background: #000;
-      position: fixed; inset: 0; z-index: 100;
-    }
-    #scannerVideo {
-      width: 100%; height: 100%;
-      object-fit: cover;
-    }
-    .scanner-overlay {
-      position: absolute; inset: 0;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-    }
-    .scanner-frame {
-      width: 260px; height: 140px;
-      border: 2.5px solid var(--accent);
-      border-radius: 12px;
-      position: relative;
-      box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
-    }
-    .scanner-line {
-      position: absolute;
-      left: 0; right: 0; top: 50%;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-      animation: scanLine 1.8s ease-in-out infinite;
-    }
-    @keyframes scanLine {
-      0% { top: 10%; } 100% { top: 90%; }
-    }
-    .scanner-corner {
-      position: absolute;
-      width: 20px; height: 20px;
-      border-color: white;
-      border-style: solid;
-    }
-    .scanner-corner.tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
-    .scanner-corner.tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
-    .scanner-corner.bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
-    .scanner-corner.br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
-    .scanner-hint-text {
-      color: white; font-size: 14px; margin-top: 24px;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
-      text-align: center; padding: 0 24px;
-    }
-    .btn-cancel-scan {
-      position: absolute; bottom: 48px;
-      background: rgba(255,255,255,0.15);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.25);
-      color: white; border-radius: 50px;
-      padding: 14px 36px; font-size: 16px;
-      cursor: pointer;
-    }
+    /* SCANNER SCREEN */
+    #scannerScreen { background: #000; position: relative; }
+    #qr-reader { width: 100% !important; height: 100vh !important; }
+    #qr-reader video { object-fit: cover !important; }
+    #qr-reader__scan_region { background: transparent !important; }
+    #qr-reader__dashboard { display: none !important; }
+    .scanner-ui { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+    .scanner-frame { width: 260px; height: 160px; border: 2.5px solid var(--accent); border-radius: 12px; position: relative; box-shadow: 0 0 0 9999px rgba(0,0,0,0.55); }
+    .scanner-line { position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scanLine 1.8s ease-in-out infinite; }
+    @keyframes scanLine { 0%{top:5%} 100%{top:90%} }
+    .scanner-corner { position: absolute; width: 20px; height: 20px; border-color: white; border-style: solid; }
+    .scanner-corner.tl { top:-2px; left:-2px; border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
+    .scanner-corner.tr { top:-2px; right:-2px; border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
+    .scanner-corner.bl { bottom:-2px; left:-2px; border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
+    .scanner-corner.br { bottom:-2px; right:-2px; border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
+    .scanner-hint { color: white; font-size: 14px; margin-top: 20px; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+    .btn-cancel { position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.25); color: white; border-radius: 50px; padding: 14px 36px; font-size: 16px; cursor: pointer; pointer-events: all; }
 
-    /* ── FORM SCREEN ── */
-    #formScreen {
-      background: var(--bg);
-      overflow-y: auto;
-    }
-    .form-header {
-      background: var(--surface);
-      padding: 16px 20px;
-      display: flex; align-items: center; gap: 14px;
-      border-bottom: 1px solid var(--border);
-      position: sticky; top: 0; z-index: 10;
-    }
-    .btn-back {
-      width: 36px; height: 36px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px; cursor: pointer; color: var(--text);
-    }
+    /* CAMERA SCREEN */
+    #cameraScreen { background: #000; position: relative; }
+    #cameraVideo { width: 100%; flex: 1; object-fit: cover; }
+    .camera-bottom { background: #000; padding: 20px 24px 40px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .camera-code { background: rgba(255,255,255,0.1); color: white; padding: 8px 20px; border-radius: 50px; font-size: 14px; font-weight: 600; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .camera-btns { display: flex; align-items: center; gap: 40px; }
+    .btn-retake { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,0.15); border: 1.5px solid rgba(255,255,255,0.3); color: white; font-size: 11px; cursor: pointer; }
+    .btn-capture { width: 80px; height: 80px; border-radius: 50%; background: white; border: 5px solid rgba(255,255,255,0.4); cursor: pointer; }
+    #cameraCanvas { display: none; }
+
+    /* FORM SCREEN */
+    #formScreen { background: var(--bg); overflow-y: auto; }
+    .form-header { background: var(--surface); padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+    .btn-back { width: 36px; height: 36px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; color: var(--text); }
     .form-title { font-size: 17px; font-weight: 600; }
-
     .form-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-
-    .form-section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-    }
-    .form-section-title {
-      font-size: 11px; font-weight: 600;
-      color: var(--text2);
-      text-transform: uppercase; letter-spacing: 0.08em;
-      padding: 12px 16px 8px;
-    }
-    .form-row {
-      padding: 12px 16px;
-      border-top: 1px solid var(--border);
-    }
-    .form-row:first-of-type { border-top: none; }
-    .form-row-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
-
-    /* Mã VĐ display */
-    .mavandon-display {
-      display: flex; align-items: center; gap: 10px;
-      padding: 12px 16px;
-    }
-    .mavandon-code {
-      flex: 1;
-      font-size: 20px; font-weight: 700;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      color: var(--accent);
-    }
-    .btn-rescan {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text2);
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    /* Photo section */
-    .photo-area {
-      padding: 12px 16px;
-    }
-    .photo-preview {
-      width: 100%; aspect-ratio: 4/3;
-      background: var(--surface2);
-      border: 2px dashed var(--border);
-      border-radius: var(--radius-sm);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 8px; cursor: pointer;
-      overflow: hidden; position: relative;
-      transition: border-color 0.2s;
-    }
+    .form-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .form-section-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.08em; padding: 12px 16px 8px; }
+    .mavandon-display { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+    .mavandon-code { flex: 1; font-size: 18px; font-weight: 700; font-family: monospace; color: var(--accent); }
+    .btn-rescan { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); border-radius: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer; }
+    .photo-area { padding: 12px 16px; }
+    .photo-preview { width: 100%; aspect-ratio: 4/3; background: var(--surface2); border: 2px dashed var(--border); border-radius: var(--radius-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; overflow: hidden; position: relative; }
     .photo-preview.has-photo { border-style: solid; border-color: var(--success); }
-    .photo-preview img {
-      width: 100%; height: 100%;
-      object-fit: cover; position: absolute; inset: 0;
-    }
+    .photo-preview img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
     .photo-placeholder { font-size: 36px; }
     .photo-label { font-size: 14px; color: var(--text2); }
-    .photo-sub { font-size: 12px; color: var(--text2); opacity: 0.6; }
-    #cameraInput { display: none; }
-
-    /* Trạng thái toggle */
-    .status-toggle {
-      display: flex; gap: 8px;
-      padding: 12px 16px;
-    }
-    .status-btn {
-      flex: 1; padding: 12px;
-      border-radius: var(--radius-sm);
-      border: 2px solid var(--border);
-      background: var(--surface2);
-      color: var(--text2);
-      font-size: 14px; font-weight: 500;
-      cursor: pointer; transition: all 0.2s;
-      text-align: center;
-    }
-    .status-btn.active-ok {
-      border-color: var(--success);
-      background: rgba(46,204,138,0.1);
-      color: var(--success);
-    }
-    .status-btn.active-err {
-      border-color: var(--danger);
-      background: rgba(247,92,92,0.1);
-      color: var(--danger);
-    }
-
-    /* Loại vấn đề */
-    .loai-vande-list {
-      padding: 8px 16px 12px;
-      display: flex; flex-direction: column; gap: 6px;
-    }
-    .loai-btn {
-      padding: 11px 14px;
-      border-radius: 8px;
-      border: 1.5px solid var(--border);
-      background: var(--surface2);
-      color: var(--text);
-      font-size: 14px;
-      cursor: pointer; text-align: left;
-      transition: all 0.15s;
-    }
-    .loai-btn.active {
-      border-color: var(--danger);
-      background: rgba(247,92,92,0.1);
-      color: var(--danger);
-    }
-
-    /* Ghi chú */
-    .ghichu-input {
-      width: 100%;
-      background: transparent;
-      border: none;
-      color: var(--text);
-      font-size: 15px;
-      resize: none;
-      outline: none;
-      min-height: 80px;
-      font-family: inherit;
-      line-height: 1.5;
-    }
+    .status-toggle { display: flex; gap: 8px; padding: 12px 16px; }
+    .status-btn { flex: 1; padding: 12px; border-radius: var(--radius-sm); border: 2px solid var(--border); background: var(--surface2); color: var(--text2); font-size: 14px; font-weight: 500; cursor: pointer; }
+    .status-btn.active-ok { border-color: var(--success); background: rgba(46,204,138,0.1); color: var(--success); }
+    .status-btn.active-err { border-color: var(--danger); background: rgba(247,92,92,0.1); color: var(--danger); }
+    .loai-list { padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .loai-btn { padding: 11px 14px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--surface2); color: var(--text); font-size: 14px; cursor: pointer; text-align: left; }
+    .loai-btn.active { border-color: var(--danger); background: rgba(247,92,92,0.1); color: var(--danger); }
+    .form-row { padding: 12px 16px; }
+    .ghichu-input { width: 100%; background: transparent; border: none; color: var(--text); font-size: 15px; resize: none; outline: none; min-height: 70px; font-family: inherit; line-height: 1.5; }
     .ghichu-input::placeholder { color: var(--text2); }
+    .form-footer { padding: 16px 20px 40px; }
+    .btn-submit { width: 100%; background: linear-gradient(135deg, var(--success), #1fa876); color: white; border: none; border-radius: var(--radius-sm); padding: 18px; font-size: 17px; font-weight: 600; cursor: pointer; }
 
-    /* Submit */
-    .form-footer { padding: 16px 20px 32px; }
-    .btn-submit {
-      width: 100%;
-      background: linear-gradient(135deg, var(--success), #1fa876);
-      color: white; border: none;
-      border-radius: var(--radius-sm);
-      padding: 18px;
-      font-size: 17px; font-weight: 600;
-      cursor: pointer; transition: all 0.2s;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-    }
-    .btn-submit:active { transform: scale(0.98); }
-    .btn-submit:disabled { opacity: 0.5; }
-
-    /* ── SUCCESS TOAST ── */
-    .toast {
-      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px);
-      background: var(--success);
-      color: white; border-radius: 50px;
-      padding: 14px 24px;
-      font-size: 15px; font-weight: 600;
-      box-shadow: 0 8px 24px rgba(46,204,138,0.4);
-      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
-      z-index: 999; white-space: nowrap;
-    }
+    /* TOAST & LOADING */
+    .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--success); color: white; border-radius: 50px; padding: 14px 24px; font-size: 15px; font-weight: 600; box-shadow: 0 8px 24px rgba(46,204,138,0.4); transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); z-index: 999; white-space: nowrap; }
     .toast.show { transform: translateX(-50%) translateY(0); }
-    .toast.error { background: var(--danger); box-shadow: 0 8px 24px rgba(247,92,92,0.4); }
-
-    /* ── LOADING ── */
-    .loading-overlay {
-      position: fixed; inset: 0; z-index: 200;
-      background: rgba(15,17,23,0.85);
-      backdrop-filter: blur(4px);
-      display: none; flex-direction: column;
-      align-items: center; justify-content: center; gap: 16px;
-    }
+    .toast.error { background: var(--danger); }
+    .loading-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(15,17,23,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
     .loading-overlay.show { display: flex; }
-    .spinner {
-      width: 44px; height: 44px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
+    .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text { font-size: 14px; color: var(--text2); }
-
-    /* ── CAMERA AUTO-OPEN ── */
-    #photoCapture { display: none; }
   </style>
 </head>
 <body>
 
-<!-- LOADING -->
-<div class="loading-overlay" id="loadingOverlay">
-  <div class="spinner"></div>
-  <div class="loading-text" id="loadingText">Đang lưu...</div>
-</div>
-
-<!-- TOAST -->
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div class="loading-text" id="loadingText">Đang lưu...</div></div>
 <div class="toast" id="toast"></div>
 
-<!-- ══════════ LOGIN SCREEN ══════════ -->
+<!-- LOGIN -->
 <div class="screen active" id="loginScreen">
   <div class="login-logo">📦</div>
   <div class="login-title">Quét Vận Đơn</div>
   <div class="login-sub">Đăng nhập để tiếp tục</div>
   <form class="login-form" onsubmit="handleLogin(event)">
-    <div class="input-group">
-      <label>Tên nhân viên</label>
-      <input class="input-field" id="inputName" type="text" placeholder="Nguyễn Văn A" autocomplete="name" required>
-    </div>
-    <div class="input-group">
-      <label>Mã nhân viên</label>
-      <input class="input-field" id="inputCode" type="text" placeholder="NV001" required>
-    </div>
+    <div class="input-group"><label>Tên nhân viên</label><input class="input-field" id="inputName" type="text" placeholder="Nguyễn Văn A" required></div>
+    <div class="input-group"><label>Mã nhân viên</label><input class="input-field" id="inputCode" type="text" placeholder="NV001" required></div>
     <div class="login-error" id="loginError">Vui lòng điền đầy đủ thông tin</div>
     <button class="btn-primary" type="submit">Đăng nhập</button>
   </form>
 </div>
 
-<!-- ══════════ MAIN APP SCREEN ══════════ -->
+<!-- APP -->
 <div class="screen" id="appScreen">
   <div class="app-header">
-    <div class="header-left">
-      <div class="header-greeting">Xin chào,</div>
-      <div class="header-name" id="headerName">—</div>
-    </div>
+    <div><div class="header-greeting">Xin chào,</div><div class="header-name" id="headerName">—</div></div>
     <button class="btn-logout" onclick="handleLogout()">Đăng xuất</button>
   </div>
-
   <div class="scan-hero">
     <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-num stat-ok" id="statOk">0</div>
-        <div class="stat-label">Bình thường</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-num stat-err" id="statErr">0</div>
-        <div class="stat-label">Có vấn đề</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-num" id="statTotal">0</div>
-        <div class="stat-label">Tổng hôm nay</div>
-      </div>
+      <div class="stat-card"><div class="stat-num stat-ok" id="statOk">0</div><div class="stat-label">Bình thường</div></div>
+      <div class="stat-card"><div class="stat-num stat-err" id="statErr">0</div><div class="stat-label">Có vấn đề</div></div>
+      <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Tổng hôm nay</div></div>
     </div>
-
-    <button class="scan-btn" onclick="startScan()">
-      <div class="scan-btn-icon">📷</div>
-      <div class="scan-btn-label">Quét mã</div>
-    </button>
+    <button class="scan-btn" onclick="startScan()"><div class="scan-btn-icon">📷</div><div class="scan-btn-label">Quét mã</div></button>
     <div class="scan-hint">Nhấn để quét mã vận đơn</div>
   </div>
 </div>
 
-<!-- ══════════ CAMERA SCREEN (dùng chung cho scan + chụp) ══════════ -->
-<div class="screen" id="cameraScreen">
-  <video id="cameraVideo" autoplay playsinline muted style="width:100%;flex:1;object-fit:cover;position:relative;"></video>
-
-  <!-- Overlay quét mã -->
-  <div id="overlayScanner" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;">
+<!-- SCANNER -->
+<div class="screen" id="scannerScreen">
+  <div id="qr-reader"></div>
+  <div class="scanner-ui">
     <div class="scanner-frame">
       <div class="scanner-line"></div>
-      <div class="scanner-corner tl"></div>
-      <div class="scanner-corner tr"></div>
-      <div class="scanner-corner bl"></div>
-      <div class="scanner-corner br"></div>
+      <div class="scanner-corner tl"></div><div class="scanner-corner tr"></div>
+      <div class="scanner-corner bl"></div><div class="scanner-corner br"></div>
     </div>
-    <div class="scanner-hint-text" style="margin-top:20px;">Đưa mã vạch vào khung để quét</div>
+    <div class="scanner-hint">Đưa mã vào khung để quét</div>
   </div>
+  <button class="btn-cancel" onclick="cancelScan()">✕ Huỷ</button>
+</div>
 
-  <!-- Overlay chụp ảnh -->
-  <div id="overlayCapture" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:48px;">
-    <div id="captureCode" style="background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);color:white;padding:10px 24px;border-radius:50px;font-size:15px;font-weight:600;margin-bottom:24px;"></div>
-    <div style="display:flex;align-items:center;gap:40px;">
-      <button onclick="retakeScan()" style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);color:white;font-size:13px;cursor:pointer;pointer-events:all;">Quét<br>lại</button>
-      <button onclick="capturePhoto()" style="width:80px;height:80px;border-radius:50%;background:white;border:5px solid rgba(255,255,255,0.5);cursor:pointer;pointer-events:all;"></button>
+<!-- CAMERA -->
+<div class="screen" id="cameraScreen">
+  <video id="cameraVideo" autoplay playsinline muted style="width:100%;flex:1;object-fit:cover;"></video>
+  <canvas id="cameraCanvas" style="display:none;"></canvas>
+  <div class="camera-bottom">
+    <div class="camera-code" id="cameraCode">📦 —</div>
+    <div class="camera-btns">
+      <button class="btn-retake" onclick="retakeScan()">Quét<br>lại</button>
+      <button class="btn-capture" onclick="capturePhoto()"></button>
       <div style="width:52px;"></div>
     </div>
   </div>
-
-  <!-- Nút huỷ -->
-  <button id="btnCancelCamera" onclick="cancelCamera()" style="position:absolute;top:52px;left:20px;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);color:white;border-radius:50px;padding:10px 20px;font-size:14px;cursor:pointer;">✕ Huỷ</button>
-
-  <canvas id="cameraCanvas" style="display:none;"></canvas>
 </div>
 
-
-<!-- ══════════ FORM SCREEN ══════════ -->
+<!-- FORM -->
 <div class="screen" id="formScreen">
   <div class="form-header">
     <button class="btn-back" onclick="goBack()">←</button>
     <div class="form-title">Nhập thông tin</div>
   </div>
-
   <div class="form-body">
-
-    <!-- Mã vận đơn -->
     <div class="form-section">
       <div class="form-section-title">Mã vận đơn</div>
       <div class="mavandon-display">
         <div class="mavandon-code" id="displayMaVanDon">—</div>
-        <button class="btn-rescan" onclick="startScan()">Quét lại</button>
+        <button class="btn-rescan" onclick="retakeScan()">Quét lại</button>
       </div>
     </div>
-
-    <!-- Ảnh chụp -->
     <div class="form-section">
-      <div class="form-section-title">Ảnh chụp <span style="color:var(--danger)">*</span></div>
+      <div class="form-section-title">Ảnh chụp *</div>
       <div class="photo-area">
-        <div class="photo-preview" id="photoPreview" onclick="openCamera()">
+        <div class="photo-preview" id="photoPreview" onclick="openCameraForPhoto()">
           <div class="photo-placeholder">📸</div>
-          <div class="photo-label">Chụp ảnh</div>
-          <div class="photo-sub">Tap để mở camera</div>
+          <div class="photo-label">Tap để chụp lại</div>
         </div>
       </div>
     </div>
-
-    <!-- Trạng thái -->
     <div class="form-section">
       <div class="form-section-title">Trạng thái</div>
       <div class="status-toggle">
@@ -553,242 +213,132 @@
         <button class="status-btn" id="btnCoVanDe" onclick="setStatus('Có vấn đề')">⚠ Có vấn đề</button>
       </div>
     </div>
-
-    <!-- Loại vấn đề (ẩn/hiện) -->
     <div class="form-section" id="sectionLoaiVanDe" style="display:none;">
-      <div class="form-section-title">Loại vấn đề <span style="color:var(--danger)">*</span></div>
-      <div class="loai-vande-list">
-        <button class="loai-btn" onclick="setLoaiVanDe('Đã sử dụng')">Đã sử dụng</button>
-        <button class="loai-btn" onclick="setLoaiVanDe('Bục vỡ')">Bục vỡ</button>
-        <button class="loai-btn" onclick="setLoaiVanDe('Tráo hàng')">Tráo hàng</button>
-        <button class="loai-btn" onclick="setLoaiVanDe('Thiếu hàng')">Thiếu hàng</button>
-        <button class="loai-btn" onclick="setLoaiVanDe('Khác')">Khác</button>
+      <div class="form-section-title">Loại vấn đề *</div>
+      <div class="loai-list">
+        <button class="loai-btn" onclick="setLoai('Đã sử dụng')">Đã sử dụng</button>
+        <button class="loai-btn" onclick="setLoai('Bục vỡ')">Bục vỡ</button>
+        <button class="loai-btn" onclick="setLoai('Tráo hàng')">Tráo hàng</button>
+        <button class="loai-btn" onclick="setLoai('Thiếu hàng')">Thiếu hàng</button>
+        <button class="loai-btn" onclick="setLoai('Khác')">Khác</button>
       </div>
     </div>
-
-    <!-- Ghi chú -->
     <div class="form-section">
       <div class="form-section-title">Ghi chú</div>
-      <div class="form-row">
-        <textarea class="ghichu-input" id="inputGhiChu" placeholder="Ghi chú thêm (không bắt buộc)..." rows="3"></textarea>
-      </div>
+      <div class="form-row"><textarea class="ghichu-input" id="inputGhiChu" placeholder="Ghi chú thêm..." rows="3"></textarea></div>
     </div>
-
   </div>
-
   <div class="form-footer">
-    <button class="btn-submit" id="btnSubmit" onclick="handleSubmit()">
-      <span>💾</span> Lưu vận đơn
-    </button>
+    <button class="btn-submit" onclick="handleSubmit()">💾 Lưu vận đơn</button>
   </div>
 </div>
 
 <script>
-// ══════════════════════════════════
-// CONFIG — điền API URL sau khi setup Google Apps Script
-// ══════════════════════════════════
-const CONFIG = {
-  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzBXGmElcY9ndnhljArBMOL_dX3nZSx6ZfbvjGuR0kO_4nsZHeLBWcJINsrEN5-YPYWmQ/exec',
-  APP_VERSION: '1.0.0'
-};
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzBXGmElcY9ndnhljArBMOL_dX3nZSx6ZfbvjGuR0kO_4nsZHeLBWcJINsrEN5-YPYWmQ/exec';
 
-// ══════════════════════════════════
-// STATE
-// ══════════════════════════════════
-let state = {
-  user: null,
-  maVanDon: '',
-  photoBase64: '',
-  photoFile: null,
-  trangThai: 'Bình thường',
-  loaiVanDe: '',
-  ghiChu: '',
-  statsOk: 0,
-  statsErr: 0
-};
+let state = { user: null, maVanDon: '', photoBase64: '', trangThai: 'Bình thường', loaiVanDe: '', statsOk: 0, statsErr: 0 };
+let html5Qr = null;
+let cameraStream = null;
+let fromForm = false; // camera mở từ form hay từ scan flow
 
-// ══════════════════════════════════
-// INIT
-// ══════════════════════════════════
+// ── INIT ──
 window.addEventListener('load', () => {
   const saved = localStorage.getItem('vd_user');
-  if (saved) {
-    state.user = JSON.parse(saved);
-    enterApp();
-  }
+  if (saved) { state.user = JSON.parse(saved); enterApp(); }
   loadStats();
 });
 
-// ══════════════════════════════════
-// LOGIN
-// ══════════════════════════════════
+// ── LOGIN ──
 function handleLogin(e) {
   e.preventDefault();
   const name = document.getElementById('inputName').value.trim();
   const code = document.getElementById('inputCode').value.trim();
-  if (!name || !code) {
-    document.getElementById('loginError').style.display = 'block';
-    return;
-  }
+  if (!name || !code) { document.getElementById('loginError').style.display = 'block'; return; }
   state.user = { name, code };
   localStorage.setItem('vd_user', JSON.stringify(state.user));
   enterApp();
 }
-
 function enterApp() {
   document.getElementById('headerName').textContent = state.user.name + ' (' + state.user.code + ')';
   showScreen('appScreen');
   loadStats();
 }
+function handleLogout() { localStorage.removeItem('vd_user'); state.user = null; showScreen('loginScreen'); }
 
-function handleLogout() {
-  localStorage.removeItem('vd_user');
-  state.user = null;
-  showScreen('loginScreen');
-}
-
-// ══════════════════════════════════
-// STATS
-// ══════════════════════════════════
+// ── STATS ──
 function loadStats() {
   const today = new Date().toDateString();
-  const saved = JSON.parse(localStorage.getItem('vd_stats_' + today) || '{"ok":0,"err":0}');
-  state.statsOk = saved.ok;
-  state.statsErr = saved.err;
-  updateStats();
+  const s = JSON.parse(localStorage.getItem('vd_stats_' + today) || '{"ok":0,"err":0}');
+  state.statsOk = s.ok; state.statsErr = s.err; updateStats();
+}
+function saveStats() { const today = new Date().toDateString(); localStorage.setItem('vd_stats_' + today, JSON.stringify({ ok: state.statsOk, err: state.statsErr })); }
+function updateStats() { document.getElementById('statOk').textContent = state.statsOk; document.getElementById('statErr').textContent = state.statsErr; document.getElementById('statTotal').textContent = state.statsOk + state.statsErr; }
+
+// ── SCREEN ──
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+
+// ── SCANNER (html5-qrcode) ──
+function startScan() {
+  fromForm = false;
+  showScreen('scannerScreen');
+  if (html5Qr) { try { html5Qr.stop(); } catch(e){} html5Qr = null; }
+  html5Qr = new Html5Qrcode('qr-reader');
+  html5Qr.start(
+    { facingMode: 'environment' },
+    { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
+    (code) => {
+      navigator.vibrate && navigator.vibrate([80, 30, 80]);
+      stopScanner();
+      onCodeDetected(code);
+    },
+    () => {}
+  ).catch(err => {
+    showToast('Lỗi camera: ' + err, true);
+    showScreen('appScreen');
+  });
 }
 
-function saveStats() {
-  const today = new Date().toDateString();
-  localStorage.setItem('vd_stats_' + today, JSON.stringify({ ok: state.statsOk, err: state.statsErr }));
-}
-
-function updateStats() {
-  document.getElementById('statOk').textContent = state.statsOk;
-  document.getElementById('statErr').textContent = state.statsErr;
-  document.getElementById('statTotal').textContent = state.statsOk + state.statsErr;
-}
-
-// ══════════════════════════════════
-// SCREEN NAV
-// ══════════════════════════════════
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}
-
-function goBack() {
-  stopZxing();
-  stopCameraStream();
-  showScreen('appScreen');
-  resetForm();
-}
-
-// ══════════════════════════════════
-// CAMERA UNIFIED (scan + chụp ảnh dùng chung 1 stream)
-// ══════════════════════════════════
-let cameraStream = null;
-let zxingReader = null;
-let cameraMode = 'scan'; // 'scan' | 'capture'
-
-async function startScan() {
-  cameraMode = 'scan';
-  document.getElementById('overlayScanner').style.display = 'flex';
-  document.getElementById('overlayCapture').style.display = 'none';
-  showScreen('cameraScreen');
-
-  // Nếu stream đã có → dùng lại, không cần xin quyền lại
-  if (!cameraStream) {
-    try {
-      cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        }
-      });
-    } catch(err) {
-      showToast('Không thể mở camera. Kiểm tra quyền truy cập!', true);
-      showScreen('appScreen');
-      return;
-    }
-  }
-
-  const video = document.getElementById('cameraVideo');
-  video.srcObject = cameraStream;
-
-  // Bắt đầu quét mã
-  startZxing(video);
-}
-
-function startZxing(video) {
-  try {
-    const hints = new Map();
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-      ZXing.BarcodeFormat.QR_CODE,
-      ZXing.BarcodeFormat.CODE_128,
-      ZXing.BarcodeFormat.CODE_39,
-      ZXing.BarcodeFormat.EAN_13,
-      ZXing.BarcodeFormat.EAN_8,
-      ZXing.BarcodeFormat.UPC_A,
-      ZXing.BarcodeFormat.UPC_E,
-      ZXing.BarcodeFormat.ITF,
-      ZXing.BarcodeFormat.CODABAR,
-      ZXing.BarcodeFormat.DATA_MATRIX,
-      ZXing.BarcodeFormat.PDF_417,
-    ]);
-
-    zxingReader = new ZXing.BrowserMultiFormatReader(hints, {
-      delayBetweenScanAttempts: 80,
-      delayBetweenScanSuccess: 1000
-    });
-
-    zxingReader.decodeFromStream(cameraStream, video, (result, err) => {
-      if (cameraMode !== 'scan') return;
-      if (result) {
-        const code = result.getText();
-        if (code) {
-          navigator.vibrate && navigator.vibrate([80, 30, 80]);
-          onBarcodeDetected(code);
-        }
-      }
-    });
-  } catch(err) {
-    console.error('ZXing error:', err);
+function stopScanner() {
+  if (html5Qr) {
+    html5Qr.stop().catch(() => {}).finally(() => { html5Qr = null; });
   }
 }
 
-function stopZxing() {
-  try {
-    if (zxingReader) { zxingReader.reset(); zxingReader = null; }
-  } catch(e) {}
+function cancelScan() {
+  stopScanner();
+  if (fromForm) { showScreen('formScreen'); } else { showScreen('appScreen'); }
 }
 
-function stopScan() {
-  stopZxing();
-}
-
-function onBarcodeDetected(code) {
-  stopZxing(); // dừng quét nhưng GIỮ stream
+// ── SAU KHI QUÉT MÃ → mở camera chụp ảnh ──
+function onCodeDetected(code) {
   state.maVanDon = code;
   document.getElementById('displayMaVanDon').textContent = code;
-  document.getElementById('captureCode').textContent = '📦 ' + code;
-
-  // Chuyển sang chế độ chụp ảnh — CÙNG màn hình, không đóng stream
-  cameraMode = 'capture';
-  document.getElementById('overlayScanner').style.display = 'none';
-  document.getElementById('overlayCapture').style.display = 'flex';
+  document.getElementById('cameraCode').textContent = '📦 ' + code;
+  openCameraStream(false);
 }
 
-function retakeScan() {
-  // Quét lại từ màn hình camera hiện tại
-  cameraMode = 'scan';
-  state.maVanDon = '';
-  document.getElementById('overlayScanner').style.display = 'flex';
-  document.getElementById('overlayCapture').style.display = 'none';
-  const video = document.getElementById('cameraVideo');
-  startZxing(video);
+// ── CAMERA CHỤP ẢNH ──
+function openCameraStream(fromFormFlag) {
+  fromForm = fromFormFlag;
+  showScreen('cameraScreen');
+  if (cameraStream) {
+    document.getElementById('cameraVideo').srcObject = cameraStream;
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+  }).then(stream => {
+    cameraStream = stream;
+    document.getElementById('cameraVideo').srcObject = stream;
+  }).catch(err => {
+    showToast('Không thể mở camera ảnh!', true);
+    showScreen('formScreen');
+  });
+}
+
+function openCameraForPhoto() {
+  document.getElementById('cameraCode').textContent = '📦 ' + (state.maVanDon || '');
+  openCameraStream(true);
 }
 
 function capturePhoto() {
@@ -797,176 +347,97 @@ function capturePhoto() {
   canvas.width = video.videoWidth || 1280;
   canvas.height = video.videoHeight || 720;
   canvas.getContext('2d').drawImage(video, 0, 0);
-
-  // Nén ảnh
   const maxW = 1200;
   let w = canvas.width, h = canvas.height;
   if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
-  const resized = document.createElement('canvas');
-  resized.width = w; resized.height = h;
-  resized.getContext('2d').drawImage(canvas, 0, 0, w, h);
-  state.photoBase64 = resized.toDataURL('image/jpeg', 0.85);
-
+  const r = document.createElement('canvas');
+  r.width = w; r.height = h;
+  r.getContext('2d').drawImage(canvas, 0, 0, w, h);
+  state.photoBase64 = r.toDataURL('image/jpeg', 0.85);
   navigator.vibrate && navigator.vibrate(60);
-
-  // Cập nhật preview trong form
   const preview = document.getElementById('photoPreview');
   preview.classList.add('has-photo');
-  preview.innerHTML = `<img src="${state.photoBase64}" alt="Ảnh vận đơn">`;
-
-  // Giữ stream, về form
+  preview.innerHTML = '<img src="' + state.photoBase64 + '" alt="ảnh">';
   showScreen('formScreen');
 }
 
-function cancelCamera() {
-  stopZxing();
-  stopCameraStream();
-  showScreen('appScreen');
-  resetForm();
-}
-
-function openCamera() {
-  // Tap vào ảnh trong form → mở lại camera chụp lại
-  cameraMode = 'capture';
-  document.getElementById('overlayScanner').style.display = 'none';
-  document.getElementById('overlayCapture').style.display = 'flex';
-  document.getElementById('captureCode').textContent = '📦 ' + (state.maVanDon || '');
-  showScreen('cameraScreen');
-
-  if (!cameraStream) {
-    navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-    }).then(stream => {
-      cameraStream = stream;
-      document.getElementById('cameraVideo').srcObject = stream;
-    }).catch(err => {
-      showToast('Không thể mở camera!', true);
-      showScreen('formScreen');
-    });
-  } else {
-    document.getElementById('cameraVideo').srcObject = cameraStream;
-  }
+function retakeScan() {
+  showScreen('scannerScreen');
+  if (html5Qr) { try { html5Qr.stop(); } catch(e){} html5Qr = null; }
+  html5Qr = new Html5Qrcode('qr-reader');
+  html5Qr.start(
+    { facingMode: 'environment' },
+    { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
+    (code) => {
+      navigator.vibrate && navigator.vibrate([80, 30, 80]);
+      stopScanner();
+      onCodeDetected(code);
+    },
+    () => {}
+  ).catch(err => { showToast('Lỗi camera: ' + err, true); showScreen('formScreen'); });
 }
 
 function stopCameraStream() {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(t => t.stop());
-    cameraStream = null;
-  }
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
 }
 
-// ══════════════════════════════════
-// FORM
-// ══════════════════════════════════
+// ── FORM ──
 function setStatus(val) {
-  state.trangThai = val;
-  state.loaiVanDe = '';
+  state.trangThai = val; state.loaiVanDe = '';
   document.getElementById('btnBinhThuong').className = 'status-btn' + (val === 'Bình thường' ? ' active-ok' : '');
   document.getElementById('btnCoVanDe').className = 'status-btn' + (val === 'Có vấn đề' ? ' active-err' : '');
   document.getElementById('sectionLoaiVanDe').style.display = val === 'Có vấn đề' ? 'block' : 'none';
   document.querySelectorAll('.loai-btn').forEach(b => b.classList.remove('active'));
 }
-
-function setLoaiVanDe(val) {
+function setLoai(val) {
   state.loaiVanDe = val;
-  document.querySelectorAll('.loai-btn').forEach(b => {
-    b.classList.toggle('active', b.textContent === val);
-  });
+  document.querySelectorAll('.loai-btn').forEach(b => b.classList.toggle('active', b.textContent === val));
 }
-
 function resetForm() {
-  state.maVanDon = '';
-  state.photoBase64 = '';
-  state.trangThai = 'Bình thường';
-  state.loaiVanDe = '';
-  state.ghiChu = '';
-
+  state.maVanDon = ''; state.photoBase64 = ''; state.trangThai = 'Bình thường'; state.loaiVanDe = '';
   document.getElementById('displayMaVanDon').textContent = '—';
-  const preview = document.getElementById('photoPreview');
-  preview.classList.remove('has-photo');
-  preview.innerHTML = `<div class="photo-placeholder">📸</div><div class="photo-label">Chụp ảnh</div><div class="photo-sub">Tap để mở camera</div>`;
   document.getElementById('inputGhiChu').value = '';
+  const p = document.getElementById('photoPreview');
+  p.classList.remove('has-photo');
+  p.innerHTML = '<div class="photo-placeholder">📸</div><div class="photo-label">Tap để chụp lại</div>';
   setStatus('Bình thường');
 }
+function goBack() { stopScanner(); stopCameraStream(); showScreen('appScreen'); resetForm(); }
 
-// ══════════════════════════════════
-// SUBMIT
-// ══════════════════════════════════
+// ── SUBMIT ──
 async function handleSubmit() {
-  if (!state.maVanDon) { showToast('Vui lòng quét mã vận đơn', true); return; }
-  if (!state.photoBase64) { showToast('Vui lòng chụp ảnh', true); return; }
-  if (state.trangThai === 'Có vấn đề' && !state.loaiVanDe) {
-    showToast('Vui lòng chọn loại vấn đề', true); return;
-  }
-
-  if (CONFIG.SCRIPT_URL === 'PASTE_SCRIPT_URL_HERE') {
-    // Demo mode — chưa kết nối Sheet
-    showLoading('Đang lưu...');
-    await sleep(1200);
-    hideLoading();
-    onSubmitSuccess();
-    return;
-  }
-
+  if (!state.maVanDon) { showToast('Vui lòng quét mã!', true); return; }
+  if (!state.photoBase64) { showToast('Vui lòng chụp ảnh!', true); return; }
+  if (state.trangThai === 'Có vấn đề' && !state.loaiVanDe) { showToast('Chọn loại vấn đề!', true); return; }
   showLoading('Đang lưu...');
   try {
-    const payload = {
-      action: 'addVanDon',
-      maVanDon: state.maVanDon,
-      anhChup: state.photoBase64,
-      trangThai: state.trangThai,
-      loaiVanDe: state.loaiVanDe,
-      ghiChu: document.getElementById('inputGhiChu').value,
-      nhanVien: state.user.name,
-      maNhanVien: state.user.code,
-      thoiGian: new Date().toLocaleString('vi-VN')
-    };
-
-    const res = await fetch(CONFIG.SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
+    const payload = { action: 'addVanDon', maVanDon: state.maVanDon, anhChup: state.photoBase64, trangThai: state.trangThai, loaiVanDe: state.loaiVanDe, ghiChu: document.getElementById('inputGhiChu').value, nhanVien: state.user.name, maNhanVien: state.user.code, thoiGian: new Date().toLocaleString('vi-VN') };
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
     const json = await res.json();
     hideLoading();
-    if (json.status === 'ok') {
-      onSubmitSuccess();
-    } else {
-      showToast('Lỗi: ' + (json.message || 'Không rõ'), true);
-    }
-  } catch(err) {
-    hideLoading();
-    showToast('Lỗi kết nối. Kiểm tra mạng!', true);
-  }
+    if (json.status === 'ok') { onSubmitSuccess(); }
+    else { showToast('Lỗi: ' + (json.message || 'Không rõ'), true); }
+  } catch(err) { hideLoading(); showToast('Lỗi kết nối!', true); }
 }
 
 function onSubmitSuccess() {
-  if (state.trangThai === 'Bình thường') state.statsOk++;
-  else state.statsErr++;
-  saveStats();
-  updateStats();
+  if (state.trangThai === 'Bình thường') state.statsOk++; else state.statsErr++;
+  saveStats(); updateStats();
   showToast('✓ Đã lưu ' + state.maVanDon);
   resetForm();
-  // Stream vẫn còn → tự mở scanner luôn không cần xin quyền lại
-  setTimeout(() => startScan(), 400);
+  // Tự mở scanner tiếp — cameraStream vẫn còn nên không cần xin quyền lại
+  setTimeout(() => startScan(), 500);
 }
 
-// ══════════════════════════════════
-// UTILS
-// ══════════════════════════════════
-function showLoading(text) {
-  document.getElementById('loadingText').textContent = text || 'Đang xử lý...';
-  document.getElementById('loadingOverlay').classList.add('show');
-}
-function hideLoading() {
-  document.getElementById('loadingOverlay').classList.remove('show');
-}
+// ── UTILS ──
+function showLoading(t) { document.getElementById('loadingText').textContent = t; document.getElementById('loadingOverlay').classList.add('show'); }
+function hideLoading() { document.getElementById('loadingOverlay').classList.remove('show'); }
 function showToast(msg, isError = false) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast' + (isError ? ' error' : '') + ' show';
   setTimeout(() => t.classList.remove('show'), 2800);
 }
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 </script>
 </body>
 </html>
