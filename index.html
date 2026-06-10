@@ -744,10 +744,10 @@ function onBarcodeDetected(code) {
   state.maVanDon = code;
   document.getElementById('displayMaVanDon').textContent = code;
   showScreen('formScreen');
-  // Tự động mở camera chụp ảnh sau 300ms
+  // Tự động mở camera chụp ảnh sau 500ms
   setTimeout(() => {
     triggerCamera();
-  }, 300);
+  }, 500);
 }
 
 // ══════════════════════════════════
@@ -864,9 +864,12 @@ function onSubmitSuccess() {
   else state.statsErr++;
   saveStats();
   updateStats();
-  showToast('✓ Đã lưu vận đơn ' + state.maVanDon);
-  showScreen('appScreen');
+  showToast('✓ Đã lưu ' + state.maVanDon);
   resetForm();
+  // Tự động mở scanner để quét đơn tiếp theo
+  setTimeout(() => {
+    startScan();
+  }, 600);
 }
 
 // ══════════════════════════════════
