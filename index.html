@@ -498,6 +498,22 @@
   </div>
 </div>
 
+<!-- ══════════ CAMERA SCREEN ══════════ -->
+<div class="screen" id="cameraScreen">
+  <video id="cameraVideo" autoplay playsinline muted style="width:100%;flex:1;object-fit:cover;"></video>
+  <div style="background:#000;padding:24px;display:flex;flex-direction:column;align-items:center;gap:16px;">
+    <div style="font-size:13px;color:#999;">Căn chỉnh ảnh rồi nhấn chụp</div>
+    <div style="display:flex;align-items:center;gap:32px;">
+      <button onclick="cancelCamera()" style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:white;font-size:20px;cursor:pointer;">✕</button>
+      <button onclick="capturePhoto()" style="width:80px;height:80px;border-radius:50%;background:white;border:4px solid rgba(255,255,255,0.5);cursor:pointer;display:flex;align-items:center;justify-content:center;">
+        <div style="width:64px;height:64px;border-radius:50%;background:white;border:3px solid #ddd;"></div>
+      </button>
+      <div style="width:48px;"></div>
+    </div>
+  </div>
+  <canvas id="cameraCanvas" style="display:none;"></canvas>
+</div>
+
 <!-- ══════════ FORM SCREEN ══════════ -->
 <div class="screen" id="formScreen">
   <div class="form-header">
@@ -520,12 +536,11 @@
     <div class="form-section">
       <div class="form-section-title">Ảnh chụp <span style="color:var(--danger)">*</span></div>
       <div class="photo-area">
-        <div class="photo-preview" id="photoPreview" onclick="triggerCamera()">
+        <div class="photo-preview" id="photoPreview" onclick="openCamera()">
           <div class="photo-placeholder">📸</div>
           <div class="photo-label">Chụp ảnh</div>
           <div class="photo-sub">Tap để mở camera</div>
         </div>
-        <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="handlePhoto(event)">
       </div>
     </div>
 
@@ -572,7 +587,7 @@
 // CONFIG — điền API URL sau khi setup Google Apps Script
 // ══════════════════════════════════
 const CONFIG = {
-  SCRIPT_URL: 'PASTE_SCRIPT_URL_HERE', // sẽ điền sau
+  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzBXGmElcY9ndnhljArBMOL_dX3nZSx6ZfbvjGuR0kO_4nsZHeLBWcJINsrEN5-YPYWmQ/exec',
   APP_VERSION: '1.0.0'
 };
 
@@ -663,6 +678,7 @@ function showScreen(id) {
 
 function goBack() {
   stopScan();
+  stopCamera();
   showScreen('appScreen');
   resetForm();
 }
@@ -743,35 +759,70 @@ function stopScan() {
 function onBarcodeDetected(code) {
   state.maVanDon = code;
   document.getElementById('displayMaVanDon').textContent = code;
+  // Tự động mở camera chụp ảnh luôn
+  openCamera();
+}
+
+// ══════════════════════════════════
+// CAMERA SCREEN
+// ══════════════════════════════════
+let cameraStream = null;
+
+async function openCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    });
+    const video = document.getElementById('cameraVideo');
+    video.srcObject = cameraStream;
+    showScreen('cameraScreen');
+  } catch(err) {
+    showToast('Không thể mở camera: ' + err.message, true);
+  }
+}
+
+function capturePhoto() {
+  const video = document.getElementById('cameraVideo');
+  const canvas = document.getElementById('cameraCanvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+
+  // Nén ảnh xuống còn ~800px để tiết kiệm dung lượng
+  const maxW = 1200;
+  let w = canvas.width, h = canvas.height;
+  if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+  const resized = document.createElement('canvas');
+  resized.width = w; resized.height = h;
+  resized.getContext('2d').drawImage(canvas, 0, 0, w, h);
+
+  state.photoBase64 = resized.toDataURL('image/jpeg', 0.85);
+  stopCamera();
+
+  // Cập nhật preview
+  const preview = document.getElementById('photoPreview');
+  preview.classList.add('has-photo');
+  preview.innerHTML = `<img src="${state.photoBase64}" alt="Ảnh vận đơn">`;
+
+  navigator.vibrate && navigator.vibrate(60);
   showScreen('formScreen');
-  // Tự động mở camera chụp ảnh sau 500ms
-  setTimeout(() => {
-    triggerCamera();
-  }, 500);
 }
 
-// ══════════════════════════════════
-// CAMERA / PHOTO
-// ══════════════════════════════════
-function triggerCamera() {
-  document.getElementById('cameraInput').click();
+function cancelCamera() {
+  stopCamera();
+  showScreen('formScreen');
 }
 
-function handlePhoto(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  state.photoFile = file;
-
-  const reader = new FileReader();
-  reader.onload = ev => {
-    state.photoBase64 = ev.target.result;
-    const preview = document.getElementById('photoPreview');
-    preview.classList.add('has-photo');
-    preview.innerHTML = `<img src="${ev.target.result}" alt="Ảnh vận đơn">`;
-  };
-  reader.readAsDataURL(file);
-  // Reset input để có thể chụp lại
-  e.target.value = '';
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
 }
 
 // ══════════════════════════════════
@@ -796,7 +847,6 @@ function setLoaiVanDe(val) {
 function resetForm() {
   state.maVanDon = '';
   state.photoBase64 = '';
-  state.photoFile = null;
   state.trangThai = 'Bình thường';
   state.loaiVanDe = '';
   state.ghiChu = '';
