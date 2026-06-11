@@ -138,6 +138,11 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text { font-size: 14px; color: var(--text2); }
 
+    /* LOOKUP */
+    .lookup-empty { color: var(--text2); font-size: 14px; text-align: center; padding: 20px; }
+    .lookup-time { font-size: 14px; color: var(--text); }
+    .lookup-img { width: 100%; border-radius: var(--radius-sm); margin-top: 4px; display: block; }
+
     /* PENDING BADGE (hang doi luu nen) */
     .pending-badge { position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); left: 12px; z-index: 300; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 50px; padding: 8px 14px; font-size: 12px; font-weight: 600; display: none; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
     .pending-badge .dot { width: 12px; height: 12px; border: 2px solid var(--text2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -181,11 +186,7 @@
     <button class="btn-logout" onclick="handleLogout()">Đăng xuất</button>
   </div>
   <div class="choice-body">
-    <div class="stats-row">
-      <div class="stat-card"><div class="stat-num stat-ok" id="statOk">0</div><div class="stat-label">Bình thường</div></div>
-      <div class="stat-card"><div class="stat-num stat-err" id="statErr">0</div><div class="stat-label">Có vấn đề</div></div>
-      <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Tổng hôm nay</div></div>
-    </div>
+    <button class="choice-btn" onclick="openLookup()"><span class="choice-icon">🔍</span> Danh sách / Tra cứu vận đơn</button>
     <div class="choice-head" style="margin-top:8px;">
       <div class="choice-title">Nguồn hoàn</div>
       <div class="choice-sub">Chọn nguồn hoàn để bắt đầu</div>
@@ -299,6 +300,25 @@
   </div>
 </div>
 
+<!-- LOOKUP / TRA CỨU -->
+<div class="screen" id="lookupScreen">
+  <div class="form-header">
+    <button class="btn-back" onclick="goHome()">←</button>
+    <div class="form-title">Tra cứu vận đơn</div>
+  </div>
+  <div class="form-body">
+    <div class="form-section">
+      <div class="form-section-title">Mã vận đơn</div>
+      <div class="mavandon-display">
+        <input class="mavandon-code" id="lookupInput" type="text" placeholder="Quét hoặc gõ mã..." />
+        <button class="btn-rescan" onclick="startLookupScan()">⌨ Quét</button>
+      </div>
+      <div class="form-row"><button class="btn-submit" style="padding:12px;font-size:15px;background:linear-gradient(135deg,var(--accent),var(--accent2));" onclick="doLookupManual()">🔍 Tra cứu</button></div>
+    </div>
+    <div id="lookupResult"></div>
+  </div>
+</div>
+
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfKtMNbxGUDK6K_2Bdr1lch4U6qiQ8j8z8qaMyx_vYIvfUtJ0iQwwhp4QdCmitFEdx/exec';
 
@@ -312,6 +332,7 @@ let state = { user: null, maVanDon: '', photoBase64: '', nguonHoan: '', tinhTran
 let html5Qr = null;
 let cameraStream = null;
 let fromForm = false; // camera mở từ form hay từ scan flow
+let scanPurpose = 'capture'; // 'capture' (quét để lưu) hoặc 'lookup' (tra cứu)
 
 // ── INIT ──
 window.addEventListener('load', () => {
@@ -372,7 +393,7 @@ function loadStats() {
   state.statsOk = s.ok; state.statsErr = s.err; updateStats();
 }
 function saveStats() { const today = new Date().toDateString(); localStorage.setItem('vd_stats_' + today, JSON.stringify({ ok: state.statsOk, err: state.statsErr })); }
-function updateStats() { document.getElementById('statOk').textContent = state.statsOk; document.getElementById('statErr').textContent = state.statsErr; document.getElementById('statTotal').textContent = state.statsOk + state.statsErr; }
+function updateStats() { const ok = document.getElementById('statOk'); if (!ok) return; ok.textContent = state.statsOk; document.getElementById('statErr').textContent = state.statsErr; document.getElementById('statTotal').textContent = state.statsOk + state.statsErr; }
 
 // ── SCREEN ──
 function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
@@ -406,24 +427,71 @@ function selectLoai(val) {
   startScan();
 }
 
-// ── NHẬP MÃ BẮNG TAY (khi không quét được) ──
-function openManual() {
-  stopScanner(); // dừng camera quét cho đỡ vướng
-  const inp = document.getElementById('manualInput');
-  inp.value = '';
-  document.getElementById('manualOverlay').classList.add('show');
-  setTimeout(() => inp.focus(), 100);
+// ── TRA CỨU VẬN ĐƠN ──
+function openLookup() {
+  document.getElementById('lookupInput').value = '';
+  document.getElementById('lookupResult').innerHTML = '';
+  showScreen('lookupScreen');
 }
-function closeManual() {
-  document.getElementById('manualOverlay').classList.remove('show');
-  // nếu vẫn đang ở màn quét thì mở lại scanner
-  if (document.getElementById('scannerScreen').classList.contains('active')) startScan();
+function handleScanResult(code) {
+  navigator.vibrate && navigator.vibrate([80, 30, 80]);
+  if (scanPurpose === 'lookup') { stopScanner().then(() => doLookup(code)); }
+  else { onCodeDetected(code); }
 }
-function confirmManual() {
-  const code = (document.getElementById('manualInput').value || '').trim();
-  if (!code) { showToast('Nhập mã trước đã', true); return; }
-  document.getElementById('manualOverlay').classList.remove('show');
-  onCodeDetected(code); // giống như vừa quét được → mở camera chụp ảnh
+function startLookupScan() {
+  scanPurpose = 'lookup';
+  stopCameraStream();
+  document.getElementById('scannerTag').textContent = 'Tra cứu';
+  showScreen('scannerScreen');
+  if (html5Qr) { try { html5Qr.stop(); } catch(e){} html5Qr = null; }
+  setTimeout(() => {
+    html5Qr = new Html5Qrcode('qr-reader');
+    html5Qr.start(
+      { facingMode: 'environment' },
+      { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
+      handleScanResult,
+      () => {}
+    ).catch(err => { showToast('Lỗi camera: ' + err, true); showScreen('lookupScreen'); });
+  }, 200);
+}
+function doLookupManual() { doLookup(document.getElementById('lookupInput').value); }
+async function doLookup(code) {
+  code = String(code || '').trim();
+  if (!code) { showToast('Nhập mã trước', true); return; }
+  document.getElementById('lookupInput').value = code;
+  showScreen('lookupScreen');
+  document.getElementById('lookupResult').innerHTML = '<div class="lookup-empty">Đang tra...</div>';
+  try {
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'findVanDon', maVanDon: code }) });
+    const json = await res.json();
+    renderLookup(json);
+  } catch (e) {
+    document.getElementById('lookupResult').innerHTML = '<div class="lookup-empty">Lỗi kết nối, thử lại</div>';
+  }
+}
+function toDriveThumb(url) {
+  const m = String(url).match(/[?&]id=([^&]+)/);
+  return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w600' : url;
+}
+function renderLookup(json) {
+  const box = document.getElementById('lookupResult');
+  if (json.status === 'notfound') { box.innerHTML = '<div class="lookup-empty">Chưa có mã này trong hệ thống</div>'; return; }
+  if (json.status !== 'ok') { box.innerHTML = '<div class="lookup-empty">Lỗi: ' + esc(json.message || '') + '</div>'; return; }
+  box.innerHTML = json.results.map(r => {
+    const isOk = (r.loaiVanDe === 'Bình thường');
+    const hasImg = r.anhUrl && r.anhUrl.indexOf('http') === 0;
+    const img = hasImg ? '<a href="' + r.anhUrl + '" target="_blank"><img class="lookup-img" src="' + toDriveThumb(r.anhUrl) + '" alt="ảnh"></a>' : '';
+    return '<div class="form-section" style="margin-top:12px;">' +
+      '<div class="form-section-title">' + esc(r.maVanDon) + '</div>' +
+      '<div style="padding:0 16px 14px;">' +
+        '<div class="lookup-time">🕒 ' + esc(r.thoiGian) + '</div>' +
+        '<div class="chips" style="padding:10px 0;">' +
+          '<div class="chip">' + esc(r.nguonHoan) + '</div>' +
+          '<div class="chip">' + esc(r.tinhTrang) + '</div>' +
+          '<div class="chip ' + (isOk ? 'ok' : 'err') + '">' + esc(r.loaiVanDe) + '</div>' +
+        '</div>' + img +
+      '</div></div>';
+  }).join('');
 }
 
 // ── SCANNER (html5-qrcode) ──
@@ -431,6 +499,7 @@ function tagText() { return [state.nguonHoan, state.tinhTrang, state.loaiVanDe].
 
 function startScan() {
   fromForm = false;
+  scanPurpose = 'capture';
   stopCameraStream();
   document.getElementById('scannerTag').textContent = tagText();
   showScreen('scannerScreen');
@@ -440,10 +509,7 @@ function startScan() {
     html5Qr.start(
       { facingMode: 'environment' },
       { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
-      (code) => {
-        navigator.vibrate && navigator.vibrate([80, 30, 80]);
-        onCodeDetected(code);
-      },
+      handleScanResult,
       () => {}
     ).catch(err => {
       showToast('Lỗi camera: ' + err, true);
@@ -462,7 +528,8 @@ function stopScanner() {
 
 function cancelScan() {
   stopScanner().then(() => {
-    if (fromForm) { showScreen('formScreen'); } else { showScreen('loaiScreen'); }
+    if (scanPurpose === 'lookup') { showScreen('lookupScreen'); }
+    else if (fromForm) { showScreen('formScreen'); } else { showScreen('loaiScreen'); }
   });
 }
 
@@ -531,6 +598,7 @@ function capturePhoto() {
 }
 
 function retakeScan() {
+  scanPurpose = 'capture';
   stopCameraStream();
   document.getElementById('scannerTag').textContent = tagText();
   showScreen('scannerScreen');
@@ -540,10 +608,7 @@ function retakeScan() {
     html5Qr.start(
       { facingMode: 'environment' },
       { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
-      (code) => {
-        navigator.vibrate && navigator.vibrate([80, 30, 80]);
-        onCodeDetected(code);
-      },
+      handleScanResult,
       () => {}
     ).catch(err => { showToast('Lỗi camera: ' + err, true); showScreen('formScreen'); });
   }, 300);
@@ -640,17 +705,15 @@ async function processQueue() {
     const json = await res.json();
     uploading = false;
     if (json.status === 'ok') {
-      uploadQueue.shift(); // gửi thành công → bỏ khỏi hàng đợi
+      uploadQueue.shift();
     } else {
-      // server báo lỗi nội dung (lặp lại cũng lỗi) → bỏ ra để không kẹt, báo cho NV
       uploadQueue.shift();
       showToast('Lưu lỗi ' + (item.maVanDon || '') + ': ' + (json.message || ''), true);
     }
     persistQueue();
     updatePending();
-    processQueue(); // gửi tiếp đơn kế
+    processQueue();
   } catch(err) {
-    // lỗi mạng → giữ nguyên hàng đợi, tự thử lại sau
     uploading = false;
     setTimeout(processQueue, 5000);
   }
