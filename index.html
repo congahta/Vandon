@@ -280,33 +280,42 @@ function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.cl
 // ── SCANNER (html5-qrcode) ──
 function startScan() {
   fromForm = false;
+  stopCameraStream(); // dừng camera ảnh trước nếu đang mở (tránh conflict)
   showScreen('scannerScreen');
   if (html5Qr) { try { html5Qr.stop(); } catch(e){} html5Qr = null; }
-  html5Qr = new Html5Qrcode('qr-reader');
-  html5Qr.start(
-    { facingMode: 'environment' },
-    { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
-    (code) => {
-      navigator.vibrate && navigator.vibrate([80, 30, 80]);
-      stopScanner();
-      onCodeDetected(code);
-    },
-    () => {}
-  ).catch(err => {
-    showToast('Lỗi camera: ' + err, true);
-    showScreen('appScreen');
-  });
+  setTimeout(() => {
+    html5Qr = new Html5Qrcode('qr-reader');
+    html5Qr.start(
+      { facingMode: 'environment' },
+      { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
+      (code) => {
+        navigator.vibrate && navigator.vibrate([80, 30, 80]);
+        onCodeDetected(code);
+      },
+      () => {}
+    ).catch(err => {
+      showToast('Lỗi camera: ' + err, true);
+      showScreen('appScreen');
+    });
+  }, 200);
 }
 
 function stopScanner() {
-  if (html5Qr) {
-    html5Qr.stop().catch(() => {}).finally(() => { html5Qr = null; });
-  }
+  return new Promise((resolve) => {
+    if (html5Qr) {
+      html5Qr.stop()
+        .catch(() => {})
+        .finally(() => { html5Qr = null; resolve(); });
+    } else {
+      resolve();
+    }
+  });
 }
 
 function cancelScan() {
-  stopScanner();
-  if (fromForm) { showScreen('formScreen'); } else { showScreen('appScreen'); }
+  stopScanner().then(() => {
+    if (fromForm) { showScreen('formScreen'); } else { showScreen('appScreen'); }
+  });
 }
 
 // ── SAU KHI QUÉT MÃ → mở camera chụp ảnh ──
@@ -314,22 +323,37 @@ function onCodeDetected(code) {
   state.maVanDon = code;
   document.getElementById('displayMaVanDon').textContent = code;
   document.getElementById('cameraCode').textContent = '📦 ' + code;
-  openCameraStream(false);
+  // Đợi scanner dừng hẳn rồi mới mở camera
+  stopScanner().then(() => {
+    setTimeout(() => openCameraStream(false), 300);
+  });
 }
 
 // ── CAMERA CHỤP ẢNH ──
 function openCameraStream(fromFormFlag) {
   fromForm = fromFormFlag;
   showScreen('cameraScreen');
+
+  // Kiểm tra stream cũ còn sống không
   if (cameraStream) {
-    document.getElementById('cameraVideo').srcObject = cameraStream;
-    return;
+    const live = cameraStream.getVideoTracks().some(t => t.readyState === 'live');
+    if (live) {
+      const video = document.getElementById('cameraVideo');
+      video.srcObject = cameraStream;
+      video.play().catch(() => {});
+      return;
+    } else {
+      cameraStream = null; // stream chết, xin lại
+    }
   }
+
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
   }).then(stream => {
     cameraStream = stream;
-    document.getElementById('cameraVideo').srcObject = stream;
+    const video = document.getElementById('cameraVideo');
+    video.srcObject = stream;
+    video.play().catch(() => {});
   }).catch(err => {
     showToast('Không thể mở camera ảnh!', true);
     showScreen('formScreen');
@@ -362,19 +386,21 @@ function capturePhoto() {
 }
 
 function retakeScan() {
+  stopCameraStream();
   showScreen('scannerScreen');
   if (html5Qr) { try { html5Qr.stop(); } catch(e){} html5Qr = null; }
-  html5Qr = new Html5Qrcode('qr-reader');
-  html5Qr.start(
-    { facingMode: 'environment' },
-    { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
-    (code) => {
-      navigator.vibrate && navigator.vibrate([80, 30, 80]);
-      stopScanner();
-      onCodeDetected(code);
-    },
-    () => {}
-  ).catch(err => { showToast('Lỗi camera: ' + err, true); showScreen('formScreen'); });
+  setTimeout(() => {
+    html5Qr = new Html5Qrcode('qr-reader');
+    html5Qr.start(
+      { facingMode: 'environment' },
+      { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
+      (code) => {
+        navigator.vibrate && navigator.vibrate([80, 30, 80]);
+        onCodeDetected(code);
+      },
+      () => {}
+    ).catch(err => { showToast('Lỗi camera: ' + err, true); showScreen('formScreen'); });
+  }, 300);
 }
 
 function stopCameraStream() {
