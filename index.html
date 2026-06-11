@@ -80,6 +80,15 @@
     .scanner-hint { color: white; font-size: 14px; margin-top: 20px; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
     .scanner-tag { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); color: white; border-radius: 50px; padding: 8px 18px; font-size: 12px; white-space: nowrap; pointer-events: none; }
     .btn-cancel { position: absolute; bottom: max(48px, calc(24px + env(safe-area-inset-bottom))); left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.25); color: white; border-radius: 50px; padding: 14px 36px; font-size: 16px; cursor: pointer; pointer-events: all; z-index: 51; }
+    .btn-manual { position: absolute; bottom: max(108px, calc(84px + env(safe-area-inset-bottom))); left: 50%; transform: translateX(-50%); background: var(--accent); border: none; color: white; border-radius: 50px; padding: 12px 28px; font-size: 14px; font-weight: 600; cursor: pointer; pointer-events: all; z-index: 51; box-shadow: 0 4px 16px rgba(79,142,247,0.45); white-space: nowrap; }
+    .manual-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(15,17,23,0.88); display: none; align-items: center; justify-content: center; padding: 24px; }
+    .manual-overlay.show { display: flex; }
+    .manual-box { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .manual-title { font-size: 17px; font-weight: 700; }
+    .manual-btns { display: flex; gap: 10px; }
+    .manual-btns button { flex: 1; padding: 14px; border-radius: var(--radius-sm); font-size: 15px; font-weight: 600; cursor: pointer; border: none; }
+    .manual-cancel { background: var(--surface2); border: 1px solid var(--border) !important; color: var(--text2); }
+    .manual-ok { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; }
 
     /* CAMERA SCREEN */
     #cameraScreen { background: #000; position: fixed; inset: 0; z-index: 50; }
@@ -100,7 +109,7 @@
     .form-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
     .form-section-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.08em; padding: 12px 16px 8px; }
     .mavandon-display { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
-    .mavandon-code { flex: 1; font-size: 18px; font-weight: 700; font-family: monospace; color: var(--accent); }
+    .mavandon-code { flex: 1; font-size: 18px; font-weight: 700; font-family: monospace; color: var(--accent); background: transparent; border: none; outline: none; width: 100%; }
     .btn-rescan { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); border-radius: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer; }
     .photo-area { padding: 12px 16px; }
     .photo-preview { width: 100%; aspect-ratio: 4/3; background: var(--surface2); border: 2px dashed var(--border); border-radius: var(--radius-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; overflow: hidden; position: relative; }
@@ -116,7 +125,7 @@
     .form-row { padding: 12px 16px; }
     .ghichu-input { width: 100%; background: transparent; border: none; color: var(--text); font-size: 15px; resize: none; outline: none; min-height: 70px; font-family: inherit; line-height: 1.5; }
     .ghichu-input::placeholder { color: var(--text2); }
-    .form-footer { padding: 16px 20px 40px; }
+    .form-footer { padding: 12px 20px max(16px, env(safe-area-inset-bottom)); position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--border); }
     .btn-submit { width: 100%; background: linear-gradient(135deg, var(--success), #1fa876); color: white; border: none; border-radius: var(--radius-sm); padding: 18px; font-size: 17px; font-weight: 600; cursor: pointer; }
 
     /* TOAST & LOADING */
@@ -139,6 +148,16 @@
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div class="loading-text" id="loadingText">Đang lưu...</div></div>
 <div class="toast" id="toast"></div>
 <div class="pending-badge" id="pendingBadge"><div class="dot"></div>Đang lưu <span id="pendingNum">0</span></div>
+<div class="manual-overlay" id="manualOverlay">
+  <div class="manual-box">
+    <div class="manual-title">Nhập mã vận đơn</div>
+    <input class="input-field" id="manualInput" type="text" placeholder="Gõ mã vận đơn..." autocomplete="off">
+    <div class="manual-btns">
+      <button class="manual-cancel" onclick="closeManual()">Huỷ</button>
+      <button class="manual-ok" onclick="confirmManual()">Xác nhận</button>
+    </div>
+  </div>
+</div>
 
 <!-- LOGIN -->
 <div class="screen active" id="loginScreen">
@@ -225,6 +244,7 @@
     <div class="scanner-hint">Đưa mã vào khung để quét</div>
   </div>
   <div class="scanner-tag" id="scannerTag">—</div>
+  <button class="btn-manual" onclick="openManual()">⌨ Nhập mã bằng tay</button>
   <button class="btn-cancel" onclick="cancelScan()">✕ Huỷ</button>
 </div>
 
@@ -252,7 +272,7 @@
     <div class="form-section">
       <div class="form-section-title">Mã vận đơn</div>
       <div class="mavandon-display">
-        <div class="mavandon-code" id="displayMaVanDon">—</div>
+        <input class="mavandon-code" id="displayMaVanDon" type="text" placeholder="Nhập mã..." />
         <button class="btn-rescan" onclick="retakeScan()">Quét lại</button>
       </div>
     </div>
@@ -386,6 +406,26 @@ function selectLoai(val) {
   startScan();
 }
 
+// ── NHẬP MÃ BẮNG TAY (khi không quét được) ──
+function openManual() {
+  stopScanner(); // dừng camera quét cho đỡ vướng
+  const inp = document.getElementById('manualInput');
+  inp.value = '';
+  document.getElementById('manualOverlay').classList.add('show');
+  setTimeout(() => inp.focus(), 100);
+}
+function closeManual() {
+  document.getElementById('manualOverlay').classList.remove('show');
+  // nếu vẫn đang ở màn quét thì mở lại scanner
+  if (document.getElementById('scannerScreen').classList.contains('active')) startScan();
+}
+function confirmManual() {
+  const code = (document.getElementById('manualInput').value || '').trim();
+  if (!code) { showToast('Nhập mã trước đã', true); return; }
+  document.getElementById('manualOverlay').classList.remove('show');
+  onCodeDetected(code); // giống như vừa quét được → mở camera chụp ảnh
+}
+
 // ── SCANNER (html5-qrcode) ──
 function tagText() { return [state.nguonHoan, state.tinhTrang, state.loaiVanDe].filter(Boolean).join(' › '); }
 
@@ -429,7 +469,7 @@ function cancelScan() {
 // ── SAU KHI QUÉT MÃ → mở camera chụp ảnh ──
 function onCodeDetected(code) {
   state.maVanDon = code;
-  document.getElementById('displayMaVanDon').textContent = code;
+  document.getElementById('displayMaVanDon').value = code;
   document.getElementById('cameraCode').textContent = '📦 ' + code;
   stopScanner().then(() => {
     setTimeout(() => openCameraStream(false), 300);
@@ -526,7 +566,7 @@ function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','
 
 function resetForm() {
   state.maVanDon = ''; state.photoBase64 = '';
-  document.getElementById('displayMaVanDon').textContent = '—';
+  document.getElementById('displayMaVanDon').value = '';
   document.getElementById('inputGhiChu').value = '';
   const p = document.getElementById('photoPreview');
   p.classList.remove('has-photo');
@@ -544,7 +584,8 @@ function goHome() {
 
 // ── SUBMIT → đưa vào hàng đợi, mở scanner ngay, gửi ngầm ──
 function handleSubmit() {
-  if (!state.maVanDon) { showToast('Vui lòng quét mã!', true); return; }
+  state.maVanDon = (document.getElementById('displayMaVanDon').value || '').trim();
+  if (!state.maVanDon) { showToast('Vui lòng quét hoặc nhập mã!', true); return; }
   if (!state.photoBase64) { showToast('Vui lòng chụp ảnh!', true); return; }
   if (!state.loaiVanDe) { showToast('Chưa chọn loại!', true); return; }
   const payload = {
