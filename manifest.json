@@ -1,0 +1,11 @@
+{
+  "name": "Quét Vận Đơn",
+  "short_name": "Vận Đơn",
+  "start_url": "index.html",
+  "scope": ".",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#0F1117",
+  "theme_color": "#0F1117"
+}
