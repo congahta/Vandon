@@ -195,16 +195,19 @@ let html5Qr = null;
 // video record state
 let recStream = null, mediaRecorder = null, recChunks = [], recordedBlob = null;
 let recTimer = null, recSeconds = 0, recState = 'idle';
-let videoQueue = [];
 let uploadingVideo = false;
+let vdb = null;
+let pendingCount = 0;
 
 // ── INIT ──
 window.addEventListener('load', () => {
   const saved = localStorage.getItem('vd_user');
   if (saved) { state.user = JSON.parse(saved); enterApp(); }
+  refreshPending();
+  processVideoQueue(); // gửi tiếp video còn tồn từ phiên trước
 });
 window.addEventListener('beforeunload', (e) => {
-  if (videoQueue.length > 0 || uploadingVideo) { e.preventDefault(); e.returnValue = ''; }
+  if (pendingCount > 0 || uploadingVideo) { e.preventDefault(); e.returnValue = ''; }
 });
 
 // ── LOGIN (dùng chung tài khoản với app quét) ──
@@ -390,46 +393,94 @@ function recBack() { stopRecStream(); startScan(); }
 // ── LƯỢC VIDEO ──
 function saveRecord() {
   if (!recordedBlob) { showToast('Chưa có video', true); return; }
-  // đẩy vào hàng đợi (giữ trong bộ nhớ), quay tiếp ngay — KHÔNG chờ gửi xong
-  videoQueue.push({ maVanDon: state.maVanDon, loai: state.loai, blob: recordedBlob, nhanVien: state.user.name, maNhanVien: state.user.code });
-  updateVideoPending();
-  processVideoQueue();
+  const rec = { maVanDon: state.maVanDon, loai: state.loai, blob: recordedBlob, nhanVien: state.user.name, maNhanVien: state.user.code, ts: Date.now() };
+  vdbAdd(rec).then(() => { refreshPending(); processVideoQueue(); }).catch(() => { showToast('Không lưu tạm được video', true); });
   showToast('✓ Đã thêm video ' + state.maVanDon + ' (đang gửi nền)');
   recordedBlob = null;
   stopRecStream();
   setTimeout(() => startScan(), 300);
 }
 
-function updateVideoPending() {
-  const badge = document.getElementById('videoPending');
-  if (!badge) return;
-  const n = videoQueue.length;
-  if (n > 0) { badge.style.display = 'flex'; document.getElementById('videoPendingNum').textContent = n; }
-  else { badge.style.display = 'none'; }
+function refreshPending() {
+  vdbCount().then((n) => {
+    pendingCount = n;
+    const badge = document.getElementById('videoPending');
+    if (!badge) return;
+    if (n > 0) { badge.style.display = 'flex'; document.getElementById('videoPendingNum').textContent = n; }
+    else { badge.style.display = 'none'; }
+  }).catch(() => {});
 }
 
 function processVideoQueue() {
-  if (uploadingVideo || videoQueue.length === 0) return;
+  if (uploadingVideo) return;
   uploadingVideo = true;
-  const item = videoQueue[0];
-  const reader = new FileReader();
-  reader.onload = async () => {
-    try {
-      const payload = { action: 'addVideo', maVanDon: item.maVanDon, loai: item.loai, video: reader.result, nhanVien: item.nhanVien, maNhanVien: item.maNhanVien };
-      const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
-      const json = await res.json();
-      uploadingVideo = false;
-      if (json.status === 'ok') { videoQueue.shift(); showToast('✓ Đã lưu video ' + item.maVanDon); }
-      else { videoQueue.shift(); showToast('Video ' + item.maVanDon + ': ' + (json.message || 'lỗi'), true); }
-      updateVideoPending();
-      processVideoQueue();
-    } catch (e) {
-      uploadingVideo = false; // lỗi mạng → giữ lại, tự thử lại sau
-      setTimeout(processVideoQueue, 5000);
-    }
-  };
-  reader.onerror = () => { uploadingVideo = false; videoQueue.shift(); updateVideoPending(); processVideoQueue(); };
-  reader.readAsDataURL(item.blob);
+  vdbGetFirst().then((item) => {
+    if (!item) { uploadingVideo = false; refreshPending(); return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const payload = { action: 'addVideo', maVanDon: item.maVanDon, loai: item.loai, video: reader.result, nhanVien: item.nhanVien, maNhanVien: item.maNhanVien };
+        const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const json = await res.json();
+        if (json.status === 'ok') { await vdbDelete(item.id); showToast('✓ Đã lưu video ' + item.maVanDon); }
+        else { await vdbDelete(item.id); showToast('Video ' + item.maVanDon + ': ' + (json.message || 'lỗi'), true); }
+        uploadingVideo = false;
+        refreshPending();
+        processVideoQueue();
+      } catch (e) {
+        uploadingVideo = false; // lỗi mạng → giữ lại, tự thử lại sau
+        setTimeout(processVideoQueue, 5000);
+      }
+    };
+    reader.onerror = () => { uploadingVideo = false; vdbDelete(item.id).then(() => { refreshPending(); processVideoQueue(); }); };
+    reader.readAsDataURL(item.blob);
+  }).catch(() => { uploadingVideo = false; });
+}
+
+// ── IndexedDB: lưu bền video chưa gửi (sống qua đóng app) ──
+function openVDB() {
+  return new Promise((resolve, reject) => {
+    if (vdb) return resolve(vdb);
+    const req = indexedDB.open('vd_video_db', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+    };
+    req.onsuccess = (e) => { vdb = e.target.result; resolve(vdb); };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+function vdbAdd(rec) {
+  return openVDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').add(rec);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  }));
+}
+function vdbGetFirst() {
+  return openVDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readonly');
+    const cur = tx.objectStore('queue').openCursor();
+    cur.onsuccess = (e) => { const c = e.target.result; res(c ? c.value : null); };
+    cur.onerror = () => rej(cur.error);
+  }));
+}
+function vdbDelete(id) {
+  return openVDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').delete(id);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  }));
+}
+function vdbCount() {
+  return openVDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readonly');
+    const r = tx.objectStore('queue').count();
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
 }
 
 // ── UTILS ──
