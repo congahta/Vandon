@@ -101,12 +101,15 @@
     .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text { font-size: 14px; color: var(--text2); }
+    .pending-badge { position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); left: 12px; z-index: 700; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 50px; padding: 8px 14px; font-size: 12px; font-weight: 600; display: none; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+    .pending-badge .dot { width: 12px; height: 12px; border: 2px solid var(--text2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
   </style>
 </head>
 <body>
 
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div class="loading-text" id="loadingText">Đang tải...</div></div>
 <div class="toast" id="toast"></div>
+<div class="pending-badge" id="videoPending"><div class="dot"></div>Đang gửi <span id="videoPendingNum">0</span></div>
 <div class="manual-overlay" id="manualOverlay">
   <div class="manual-box">
     <div class="manual-title">Nhập mã vận đơn</div>
@@ -192,11 +195,16 @@ let html5Qr = null;
 // video record state
 let recStream = null, mediaRecorder = null, recChunks = [], recordedBlob = null;
 let recTimer = null, recSeconds = 0, recState = 'idle';
+let videoQueue = [];
+let uploadingVideo = false;
 
 // ── INIT ──
 window.addEventListener('load', () => {
   const saved = localStorage.getItem('vd_user');
   if (saved) { state.user = JSON.parse(saved); enterApp(); }
+});
+window.addEventListener('beforeunload', (e) => {
+  if (videoQueue.length > 0 || uploadingVideo) { e.preventDefault(); e.returnValue = ''; }
 });
 
 // ── LOGIN (dùng chung tài khoản với app quét) ──
@@ -382,32 +390,46 @@ function recBack() { stopRecStream(); startScan(); }
 // ── LƯỢC VIDEO ──
 function saveRecord() {
   if (!recordedBlob) { showToast('Chưa có video', true); return; }
-  showLoading('Đang tải video lên...');
+  // đẩy vào hàng đợi (giữ trong bộ nhớ), quay tiếp ngay — KHÔNG chờ gửi xong
+  videoQueue.push({ maVanDon: state.maVanDon, loai: state.loai, blob: recordedBlob, nhanVien: state.user.name, maNhanVien: state.user.code });
+  updateVideoPending();
+  processVideoQueue();
+  showToast('✓ Đã thêm video ' + state.maVanDon + ' (đang gửi nền)');
+  recordedBlob = null;
+  stopRecStream();
+  setTimeout(() => startScan(), 300);
+}
+
+function updateVideoPending() {
+  const badge = document.getElementById('videoPending');
+  if (!badge) return;
+  const n = videoQueue.length;
+  if (n > 0) { badge.style.display = 'flex'; document.getElementById('videoPendingNum').textContent = n; }
+  else { badge.style.display = 'none'; }
+}
+
+function processVideoQueue() {
+  if (uploadingVideo || videoQueue.length === 0) return;
+  uploadingVideo = true;
+  const item = videoQueue[0];
   const reader = new FileReader();
   reader.onload = async () => {
     try {
-      const payload = {
-        action: 'addVideo',
-        maVanDon: state.maVanDon,
-        loai: state.loai,
-        video: reader.result,
-        nhanVien: state.user.name,
-        maNhanVien: state.user.code
-      };
+      const payload = { action: 'addVideo', maVanDon: item.maVanDon, loai: item.loai, video: reader.result, nhanVien: item.nhanVien, maNhanVien: item.maNhanVien };
       const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
       const json = await res.json();
-      hideLoading();
-      if (json.status === 'ok') {
-        showToast('✓ Đã lưu video ' + state.maVanDon);
-        stopRecStream();
-        setTimeout(() => startScan(), 700);
-      } else {
-        showToast(json.message || 'Lưu video lỗi', true);
-      }
-    } catch (e) { hideLoading(); showToast('Lỗi kết nối hoặc video quá nặng', true); }
+      uploadingVideo = false;
+      if (json.status === 'ok') { videoQueue.shift(); showToast('✓ Đã lưu video ' + item.maVanDon); }
+      else { videoQueue.shift(); showToast('Video ' + item.maVanDon + ': ' + (json.message || 'lỗi'), true); }
+      updateVideoPending();
+      processVideoQueue();
+    } catch (e) {
+      uploadingVideo = false; // lỗi mạng → giữ lại, tự thử lại sau
+      setTimeout(processVideoQueue, 5000);
+    }
   };
-  reader.onerror = () => { hideLoading(); showToast('Không đọc được video', true); };
-  reader.readAsDataURL(recordedBlob);
+  reader.onerror = () => { uploadingVideo = false; videoQueue.shift(); updateVideoPending(); processVideoQueue(); };
+  reader.readAsDataURL(item.blob);
 }
 
 // ── UTILS ──
