@@ -51,7 +51,7 @@
     .choice-icon { font-size: 26px; width: 32px; text-align: center; }
 
     /* SCANNER */
-    #scannerScreen { background: #000; position: fixed; inset: 0; z-index: 50; }
+    #scannerScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; z-index: 50; }
     #scannerScreen.screen.active { display: block; }
     #qr-reader { width: 100% !important; height: 100% !important; }
     #qr-reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; }
@@ -75,7 +75,7 @@
     .manual-ok { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; }
 
     /* RECORD */
-    #recordScreen { background: #000; position: fixed; inset: 0; z-index: 50; }
+    #recordScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; z-index: 50; }
     #recordScreen.screen.active { display: block; }
     #recVideo { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
     .rec-top { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
