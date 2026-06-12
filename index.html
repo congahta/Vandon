@@ -428,6 +428,28 @@ function selectLoai(val) {
 }
 
 // ── TRA CỨU VẬN ĐƠN ──
+// ── NHẬP MÃ BẮNG TAY (khi không quét được) ──
+function openManual() {
+  stopScanner().then(() => {
+    const inp = document.getElementById('manualInput');
+    inp.value = '';
+    document.getElementById('manualOverlay').classList.add('show');
+    setTimeout(() => { try { inp.focus(); } catch(e) {} }, 150);
+  });
+}
+function closeManual() {
+  document.getElementById('manualOverlay').classList.remove('show');
+  if (document.getElementById('scannerScreen').classList.contains('active')) {
+    if (scanPurpose === 'lookup') startLookupScan(); else startScan();
+  }
+}
+function confirmManual() {
+  const code = (document.getElementById('manualInput').value || '').trim();
+  if (!code) { showToast('Nhập mã trước đã', true); return; }
+  document.getElementById('manualOverlay').classList.remove('show');
+  if (scanPurpose === 'lookup') { doLookup(code); } else { onCodeDetected(code); }
+}
+
 function openLookup() {
   document.getElementById('lookupInput').value = '';
   document.getElementById('lookupResult').innerHTML = '';
@@ -448,7 +470,7 @@ function startLookupScan() {
     html5Qr = new Html5Qrcode('qr-reader');
     html5Qr.start(
       { facingMode: 'environment' },
-      { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
+      { fps: 10, qrbox: { width: 260, height: 160 } },
       handleScanResult,
       () => {}
     ).catch(err => { showToast('Lỗi camera: ' + err, true); showScreen('lookupScreen'); });
@@ -508,7 +530,7 @@ function startScan() {
     html5Qr = new Html5Qrcode('qr-reader');
     html5Qr.start(
       { facingMode: 'environment' },
-      { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
+      { fps: 10, qrbox: { width: 260, height: 160 } },
       handleScanResult,
       () => {}
     ).catch(err => {
@@ -607,7 +629,7 @@ function retakeScan() {
     html5Qr = new Html5Qrcode('qr-reader');
     html5Qr.start(
       { facingMode: 'environment' },
-      { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: window.innerHeight / window.innerWidth },
+      { fps: 10, qrbox: { width: 260, height: 160 } },
       handleScanResult,
       () => {}
     ).catch(err => { showToast('Lỗi camera: ' + err, true); showScreen('formScreen'); });
