@@ -293,14 +293,14 @@ function openRecord() {
 function startPreview() {
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-    audio: true
+    audio: false
   }).then(stream => {
     recStream = stream;
     const v = document.getElementById('recVideo');
     v.srcObject = stream; v.muted = true; v.controls = false;
     v.play().catch(() => {});
     setRecState('idle');
-  }).catch(err => { showToast('Không mở được camera/mic!', true); showScreen('scannerScreen'); startScan(); });
+  }).catch(err => { showToast('Không mở được camera!', true); showScreen('scannerScreen'); startScan(); });
 }
 function pickMime() {
   const list = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
