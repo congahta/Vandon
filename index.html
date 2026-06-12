@@ -62,7 +62,7 @@
     .breadcrumb { font-size: 12px; color: var(--text2); padding: 10px 20px 0; }
 
     /* SCANNER SCREEN */
-    #scannerScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; z-index: 50; }
+    #scannerScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; height: var(--vh, 100dvh); z-index: 50; }
     #scannerScreen.screen.active { display: block; }
     #qr-reader { width: 100% !important; height: 100% !important; }
     #qr-reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; }
@@ -91,7 +91,7 @@
     .manual-ok { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; }
 
     /* CAMERA SCREEN */
-    #cameraScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; z-index: 50; }
+    #cameraScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; height: var(--vh, 100dvh); z-index: 50; }
     #cameraScreen.screen.active { display: block; }
     #cameraVideo { width: 100%; height: 100%; object-fit: cover; display: block; }
     .camera-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 24px max(24px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 14px; background: linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0)); }
@@ -102,7 +102,7 @@
     #cameraCanvas { display: none; }
 
     /* FORM SCREEN */
-    #formScreen { background: var(--bg); height: 100dvh; min-height: 0; }
+    #formScreen { background: var(--bg); height: 100vh; height: 100dvh; height: var(--vh, 100dvh); min-height: 0; }
     .form-header { background: var(--surface); padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
     .form-title { font-size: 17px; font-weight: 600; }
     .form-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; flex: 1; overflow-y: auto; min-height: 0; }
@@ -333,6 +333,10 @@ let html5Qr = null;
 let cameraStream = null;
 let fromForm = false; // camera mở từ form hay từ scan flow
 let scanPurpose = 'capture'; // 'capture' (quét để lưu) hoặc 'lookup' (tra cứu)
+function setVH(){ document.documentElement.style.setProperty('--vh', window.innerHeight + 'px'); }
+setVH();
+window.addEventListener('resize', setVH);
+window.addEventListener('orientationchange', () => setTimeout(setVH, 200));
 
 // ── INIT ──
 window.addEventListener('load', () => {
