@@ -1,218 +1,569 @@
-// ══════════════════════════════════════════════════════
-// GOOGLE APPS SCRIPT — Quét Vận Đơn (v2: login qua Sheet + phân loại)
-// Paste toàn bộ code này vào Google Apps Script rồi Deploy lại (New deployment)
-// ══════════════════════════════════════════════════════
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0F1117">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest-video.json">
+  <title>Quay Video Vận Đơn</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg: #0F1117; --surface: #1A1D27; --surface2: #22263A;
+      --accent: #4F8EF7; --accent2: #7C5CFC;
+      --success: #2ECC8A; --danger: #F75C5C;
+      --text: #F0F2FF; --text2: #8B92B8;
+      --border: #2A2F45; --radius: 16px; --radius-sm: 10px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+    .screen { display: none; min-height: 100vh; flex-direction: column; }
+    .screen.active { display: flex; }
 
-// ⚙️ CẤU HÌNH — đổi các giá trị này
-const SHEET_ID        = '1tvZW1VAesFnp1CzPYle_4jhWdt2WCWPNw3jnu8Hcps8'; // ID của Google Sheet (lấy từ URL)
-const SHEET_NAME      = 'Hoan nhan thuc te';                             // Tab lưu vận đơn
-const ACCOUNTS_SHEET  = 'TaiKhoan';                                     // Tab chứa tài khoản đăng nhập
-const DRIVE_FOLDER_ID = '1b_I5Xd-oQef4O43ER9Xyp6Tep4X-2wnO';            // Folder ID Google Drive lưu ảnh
+    /* LOGIN */
+    #loginScreen { align-items: center; justify-content: center; padding: 32px 24px; background: radial-gradient(ellipse at 50% 0%, #1e2a4a 0%, var(--bg) 60%); }
+    .login-logo { width: 72px; height: 72px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(79,142,247,0.3); }
+    .login-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; text-align: center; }
+    .login-sub { font-size: 14px; color: var(--text2); margin-bottom: 36px; }
+    .login-form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
+    .input-group { display: flex; flex-direction: column; gap: 6px; }
+    .input-group label { font-size: 13px; color: var(--text2); font-weight: 500; }
+    .input-field { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; font-size: 16px; color: var(--text); outline: none; }
+    .input-field:focus { border-color: var(--accent); }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; border: none; border-radius: var(--radius-sm); padding: 16px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    .btn-primary:disabled { opacity: 0.6; }
+    .login-error { color: var(--danger); font-size: 13px; text-align: center; display: none; }
 
-// ══════════════════════════════════════════════════════
-function doPost(e) {
+    /* HEADER + CHOICE */
+    .app-header { background: var(--surface); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+    .header-name { font-size: 16px; font-weight: 600; }
+    .header-greeting { font-size: 12px; color: var(--text2); }
+    .btn-logout { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .btn-back { width: 36px; height: 36px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; color: var(--text); flex-shrink: 0; }
+    .form-title { font-size: 17px; font-weight: 600; }
+    .choice-body { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .choice-head { margin-bottom: 4px; }
+    .choice-title { font-size: 21px; font-weight: 700; margin-bottom: 4px; }
+    .choice-sub { font-size: 13px; color: var(--text2); }
+    .choice-btn { padding: 26px 20px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font-size: 18px; font-weight: 600; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 14px; }
+    .choice-btn:active { border-color: var(--accent); background: var(--surface2); }
+    .choice-icon { font-size: 26px; width: 32px; text-align: center; }
+
+    /* SCANNER */
+    #scannerScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; height: var(--vh, 100dvh); z-index: 50; }
+    #scannerScreen.screen.active { display: block; }
+    #qr-reader { width: 100% !important; height: 100% !important; }
+    #qr-reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; }
+    #qr-reader__scan_region { background: transparent !important; }
+    #qr-reader__dashboard { display: none !important; }
+    .scanner-ui { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+    .scanner-frame { width: 260px; height: 160px; border: 2.5px solid var(--accent); border-radius: 12px; position: relative; box-shadow: 0 0 0 9999px rgba(0,0,0,0.55); }
+    .scanner-line { position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scanLine 1.8s ease-in-out infinite; }
+    @keyframes scanLine { 0%{top:5%} 100%{top:90%} }
+    .scanner-hint { color: white; font-size: 14px; margin-top: 20px; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+    .scanner-tag { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); color: white; border-radius: 50px; padding: 8px 18px; font-size: 12px; white-space: nowrap; pointer-events: none; }
+    .btn-cancel { position: absolute; bottom: max(48px, calc(24px + env(safe-area-inset-bottom))); left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.25); color: white; border-radius: 50px; padding: 14px 36px; font-size: 16px; cursor: pointer; pointer-events: all; z-index: 51; }
+    .btn-manual { position: absolute; bottom: max(108px, calc(84px + env(safe-area-inset-bottom))); left: 50%; transform: translateX(-50%); background: var(--accent); border: none; color: white; border-radius: 50px; padding: 12px 28px; font-size: 14px; font-weight: 600; cursor: pointer; pointer-events: all; z-index: 51; box-shadow: 0 4px 16px rgba(79,142,247,0.45); white-space: nowrap; }
+    .manual-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(15,17,23,0.88); display: none; align-items: center; justify-content: center; padding: 24px; }
+    .manual-overlay.show { display: flex; }
+    .manual-box { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .manual-title { font-size: 17px; font-weight: 700; }
+    .manual-btns { display: flex; gap: 10px; }
+    .manual-btns button { flex: 1; padding: 14px; border-radius: var(--radius-sm); font-size: 15px; font-weight: 600; cursor: pointer; border: none; }
+    .manual-cancel { background: var(--surface2); border: 1px solid var(--border) !important; color: var(--text2); }
+    .manual-ok { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; }
+
+    /* RECORD */
+    #recordScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; height: var(--vh, 100dvh); z-index: 50; }
+    #recordScreen.screen.active { display: block; }
+    #recVideo { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+    .rec-top { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+    .rec-code { background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); color: white; padding: 7px 18px; border-radius: 50px; font-size: 13px; font-weight: 600; max-width: 86%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rec-timer { background: rgba(247,92,92,0.9); color: white; padding: 6px 16px; border-radius: 50px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; display: none; align-items: center; gap: 8px; }
+    .rec-timer::before { content: ''; width: 10px; height: 10px; background: white; border-radius: 50%; animation: blink 1s infinite; }
+    @keyframes blink { 50% { opacity: 0.25; } }
+    .rec-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 28px max(26px, env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: space-between; background: linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0)); }
+    .rec-main { width: 76px; height: 76px; border-radius: 50%; background: var(--danger); border: 5px solid rgba(255,255,255,0.85); cursor: pointer; flex-shrink: 0; transition: border-radius 0.15s; }
+    .rec-main.recording { border-radius: 18px; width: 64px; height: 64px; }
+    .rec-side { width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border: 1.5px solid rgba(255,255,255,0.3); color: white; font-size: 18px; cursor: pointer; }
+    .rec-saved { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 24px max(26px, env(safe-area-inset-bottom)); display: none; gap: 12px; background: linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0)); }
+    .rec-saved.show { display: flex; }
+    .rec-retake { flex: 1; padding: 16px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .rec-save { flex: 2; padding: 16px; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--success), #1fa876); border: none; color: white; font-size: 16px; font-weight: 700; cursor: pointer; }
+
+    /* TOAST + LOADING */
+    .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--success); color: white; border-radius: 50px; padding: 14px 24px; font-size: 15px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.4); transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); z-index: 999; max-width: 90%; text-align: center; }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.error { background: var(--danger); }
+    .loading-overlay { position: fixed; inset: 0; z-index: 600; background: rgba(15,17,23,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+    .loading-overlay.show { display: flex; }
+    .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 14px; color: var(--text2); }
+    .pending-badge { position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); left: 12px; z-index: 700; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 50px; padding: 8px 14px; font-size: 12px; font-weight: 600; display: none; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+    .pending-badge .dot { width: 12px; height: 12px; border: 2px solid var(--text2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div class="loading-text" id="loadingText">Đang tải...</div></div>
+<div class="toast" id="toast"></div>
+<div class="pending-badge" id="videoPending" onclick="skipCurrent()" title="Chạm để bỏ video đang kẹt" style="cursor:pointer;"><div class="dot"></div>Đang gửi <span id="videoPendingNum">0</span> · ✕</div>
+<div class="manual-overlay" id="manualOverlay">
+  <div class="manual-box">
+    <div class="manual-title">Nhập mã vận đơn</div>
+    <input class="input-field" id="manualInput" type="text" placeholder="Gõ mã vận đơn..." autocomplete="off">
+    <div class="manual-btns">
+      <button class="manual-cancel" onclick="closeManual()">Huỷ</button>
+      <button class="manual-ok" onclick="confirmManual()">Xác nhận</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div class="screen active" id="loginScreen">
+  <div class="login-logo">🎥</div>
+  <div class="login-title">Quay Video Vận Đơn</div>
+  <div class="login-sub">Đăng nhập để tiếp tục</div>
+  <form class="login-form" onsubmit="handleLogin(event)">
+    <div class="input-group"><label>Tài khoản</label><input class="input-field" id="inputUser" type="text" autocomplete="username" placeholder="Tài khoản" required></div>
+    <div class="input-group"><label>Mật khẩu</label><input class="input-field" id="inputPass" type="password" autocomplete="current-password" placeholder="Mật khẩu" required></div>
+    <div class="login-error" id="loginError">Sai tài khoản hoặc mật khẩu</div>
+    <button class="btn-primary" id="loginBtn" type="submit">Đăng nhập</button>
+  </form>
+</div>
+
+<!-- CHỌN LOẠI VIDEO -->
+<div class="screen" id="choiceScreen">
+  <div class="app-header">
+    <div class="header-left">
+      <div><div class="header-greeting">Xin chào,</div><div class="header-name" id="headerName">—</div></div>
+    </div>
+    <button class="btn-logout" onclick="handleLogout()">Đăng xuất</button>
+  </div>
+  <div class="choice-body">
+    <div class="choice-head">
+      <div class="choice-title">Quay video</div>
+      <div class="choice-sub">Chọn loại video cần quay</div>
+    </div>
+    <button class="choice-btn" onclick="selectLoai('boc')"><span class="choice-icon">📭</span> Video bóc hàng</button>
+    <button class="choice-btn" onclick="selectLoai('dong')"><span class="choice-icon">📦</span> Video đóng hàng</button>
+  </div>
+</div>
+
+<!-- SCANNER -->
+<div class="screen" id="scannerScreen">
+  <div id="qr-reader"></div>
+  <div class="scanner-ui">
+    <div class="scanner-frame"><div class="scanner-line"></div></div>
+    <div class="scanner-hint">Đưa mã vào khung để quét</div>
+  </div>
+  <div class="scanner-tag" id="scannerTag">—</div>
+  <button class="btn-manual" onclick="openManual()">⌨ Nhập mã bằng tay</button>
+  <button class="btn-cancel" onclick="cancelScan()">✕ Huỷ</button>
+</div>
+
+<!-- RECORD -->
+<div class="screen" id="recordScreen">
+  <video id="recVideo" autoplay playsinline muted onclick="tapFocus()"></video>
+  <div class="rec-top">
+    <span class="rec-code" id="recCode">📦 —</span>
+    <span style="background:rgba(0,0,0,0.45);color:#fff;padding:4px 12px;border-radius:50px;font-size:11px;">Chạm màn hình để lấy nét</span>
+    <span class="rec-timer" id="recTimer">00:00 / 01:00</span>
+  </div>
+  <div class="rec-bottom" id="recBottom">
+    <button class="rec-side" onclick="recBack()">✕</button>
+    <button class="rec-main" id="recMain" onclick="toggleRecord()"></button>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="rec-saved" id="recSaved">
+    <button class="rec-retake" onclick="retakeVideo()">↺ Quay lại</button>
+    <button class="rec-save" onclick="saveRecord()">💾 Lưu video</button>
+  </div>
+</div>
+
+<script>
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfKtMNbxGUDK6K_2Bdr1lch4U6qiQ8j8z8qaMyx_vYIvfUtJ0iQwwhp4QdCmitFEdx/exec';
+const MAX_SEC = 60;
+const VIDEO_BITRATE = 2500000; // ~2.5 Mbps (1080p, 24fps)
+
+const LOAI_LABEL = { boc: 'Video bóc hàng', dong: 'Video đóng hàng' };
+
+let state = { user: null, loai: 'boc', maVanDon: '' };
+let html5Qr = null;
+
+// video record state
+let recStream = null, mediaRecorder = null, recChunks = [], recordedBlob = null;
+let recTimer = null, recSeconds = 0, recState = 'idle';
+let uploadingVideo = false;
+let vdb = null;
+let pendingCount = 0;
+let attemptMap = {};
+const MAX_ATTEMPTS = 3;
+const UPLOAD_TIMEOUT = 120000;
+let currentCtrl = null;
+const skippedIds = new Set();
+function setVH(){ document.documentElement.style.setProperty('--vh', window.innerHeight + 'px'); }
+setVH();
+window.addEventListener('resize', setVH);
+window.addEventListener('orientationchange', () => setTimeout(setVH, 200));
+
+// ── INIT ──
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem('vd_user');
+  if (saved) { state.user = JSON.parse(saved); enterApp(); }
+  refreshPending();
+  processVideoQueue(); // gửi tiếp video còn tồn từ phiên trước
+});
+window.addEventListener('beforeunload', (e) => {
+  if (pendingCount > 0 || uploadingVideo) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ── LOGIN (dùng chung tài khoản với app quét) ──
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('inputUser').value.trim();
+  const password = document.getElementById('inputPass').value.trim();
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+  if (!username || !password) { errEl.textContent = 'Vui lòng nhập tài khoản và mật khẩu'; errEl.style.display = 'block'; return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'Đang kiểm tra...';
   try {
-    const data = JSON.parse(e.postData.contents);
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'login', username, password }) });
+    const json = await res.json();
+    if (json.status === 'ok') {
+      state.user = { username: json.username, name: json.nhanVien, code: json.maNhanVien };
+      localStorage.setItem('vd_user', JSON.stringify(state.user));
+      document.getElementById('inputPass').value = '';
+      enterApp();
+    } else { errEl.textContent = json.message || 'Sai tài khoản hoặc mật khẩu'; errEl.style.display = 'block'; }
+  } catch (err) { errEl.textContent = 'Lỗi kết nối, thử lại'; errEl.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = 'Đăng nhập'; }
+}
+function enterApp() {
+  document.getElementById('headerName').textContent = state.user.name + (state.user.code ? ' (' + state.user.code + ')' : '');
+  showScreen('choiceScreen');
+}
+function handleLogout() { localStorage.removeItem('vd_user'); state.user = null; stopScanner(); stopRecStream(); showScreen('loginScreen'); }
 
-    if (data.action === 'login')    return doLogin(data);
-    if (data.action === 'addVanDon') return addVanDon(data);
-    if (data.action === 'findVanDon') return findVanDon(data);
-    if (data.action === 'addVideo') return addVideo(data);
+// ── SCREEN ──
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-    return jsonResponse({ status: 'error', message: 'Unknown action' });
-  } catch (err) {
-    return jsonResponse({ status: 'error', message: err.toString() });
-  }
+// ── CHỌN LOẠI → mở scanner ──
+function selectLoai(loai) { state.loai = loai; startScan(); }
+
+// ── NHẬP MÃ BẰNG TAY ──
+function openManual() {
+  stopScanner().then(() => {
+    const inp = document.getElementById('manualInput');
+    inp.value = '';
+    document.getElementById('manualOverlay').classList.add('show');
+    setTimeout(() => { try { inp.focus(); } catch(e) {} }, 150);
+  });
+}
+function closeManual() {
+  document.getElementById('manualOverlay').classList.remove('show');
+  if (document.getElementById('scannerScreen').classList.contains('active')) startScan();
+}
+function confirmManual() {
+  const code = (document.getElementById('manualInput').value || '').trim();
+  if (!code) { showToast('Nhập mã trước đã', true); return; }
+  document.getElementById('manualOverlay').classList.remove('show');
+  onScanned(code);
 }
 
-function doGet(e) {
-  return jsonResponse({ status: 'ok', message: 'API is running' });
+// ── SCANNER ──
+function startScan() {
+  stopRecStream();
+  document.getElementById('scannerTag').textContent = LOAI_LABEL[state.loai] || '';
+  showScreen('scannerScreen');
+  if (html5Qr) { try { html5Qr.stop(); } catch(e){} html5Qr = null; }
+  setTimeout(() => {
+    html5Qr = new Html5Qrcode('qr-reader');
+    html5Qr.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 260, height: 160 } },
+      (code) => { navigator.vibrate && navigator.vibrate([80, 30, 80]); onScanned(code); },
+      () => {}
+    ).catch(err => { showToast('Lỗi camera: ' + err, true); showScreen('choiceScreen'); });
+  }, 200);
+}
+function stopScanner() {
+  return new Promise((resolve) => {
+    if (html5Qr) { html5Qr.stop().catch(() => {}).finally(() => { html5Qr = null; resolve(); }); }
+    else { resolve(); }
+  });
+}
+function cancelScan() { stopScanner().then(() => showScreen('choiceScreen')); }
+
+function onScanned(code) {
+  state.maVanDon = code;
+  stopScanner().then(() => { setTimeout(() => openRecord(), 250); });
 }
 
-// ══════════════════════════════════════════════════════
-// ĐĂNG NHẬP — đối chiếu với tab TaiKhoan
-// Cấu trúc tab TaiKhoan (hàng 1 là tiêu đề):
-//   A: TaiKhoan | B: MatKhau | C: TenNhanVien | D: MaNhanVien
-// ══════════════════════════════════════════════════════
-function doLogin(data) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheet = ss.getSheetByName(ACCOUNTS_SHEET);
-  if (!sheet) {
-    return jsonResponse({ status: 'error', message: 'Không tìm thấy tab tài khoản "' + ACCOUNTS_SHEET + '"' });
-  }
-
-  const username = String(data.username || '').trim();
-  const password = String(data.password || '').trim();
-  if (!username || !password) {
-    return jsonResponse({ status: 'error', message: 'Thiếu tài khoản hoặc mật khẩu' });
-  }
-
-  const values = sheet.getDataRange().getValues();
-  for (let i = 1; i < values.length; i++) { // bỏ hàng tiêu đề
-    const u = String(values[i][0] || '').trim();
-    const p = String(values[i][1] || '').trim();
-    if (u && u === username && p === password) {
-      return jsonResponse({
-        status: 'ok',
-        username: u,
-        nhanVien: values[i][2] || u,
-        maNhanVien: values[i][3] || ''
-      });
-    }
-  }
-  return jsonResponse({ status: 'error', message: 'Sai tài khoản hoặc mật khẩu' });
+// ── QUAY VIDEO ──
+function openRecord() {
+  resetRecord();
+  document.getElementById('recCode').textContent = '📦 ' + (state.maVanDon || '') + ' · ' + (LOAI_LABEL[state.loai] || '');
+  showScreen('recordScreen');
+  startPreview();
 }
-
-// ══════════════════════════════════════════════════════
-// GHI VẬN ĐƠN
-// Thứ tự cột: A MaVanDon | B ThoiGian | C AnhChup | D NguonHoan
-//             E TinhTrang(Ảo/Không ảo) | F LoaiVanDe
-// ══════════════════════════════════════════════════════
-function addVanDon(data) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME);
-
-  if (!sheet) {
-    const allSheets = ss.getSheets().map(s => s.getName()).join(', ');
-    return jsonResponse({ status: 'error', message: 'Không tìm thấy sheet "' + SHEET_NAME + '". Các sheet có sẵn: ' + allSheets });
-  }
-
-  // 1. Upload ảnh lên Google Drive
-  let anhUrl = '';
-  if (data.anhChup && data.anhChup.startsWith('data:image')) {
-    try {
-      anhUrl = uploadImageToDrive(data.anhChup, data.maVanDon);
-    } catch (err) {
-      anhUrl = 'Upload lỗi: ' + err.toString();
-    }
-  }
-
-  // 2. Ghi vào Sheet
-  const thoiGian = new Date();
-  const row = [
-    data.maVanDon || '',                              // A: MaVanDon
-    thoiGian,                                         // B: ThoiGian
-    anhUrl || '',                                     // C: AnhChup (lưu link)
-    data.nguonHoan || '',                             // D: NguonHoan (Long J&T / Khác)
-    data.tinhTrang || '',                             // E: TinhTrang (Ảo / Không ảo)
-    data.loaiVanDe || ''                              // F: LoaiVanDe
-  ];
-
-  sheet.appendRow(row);
-
-  const lastRow = sheet.getLastRow();
-  sheet.getRange(lastRow, 2).setNumberFormat('dd/mm/yyyy hh:mm:ss'); // cột B ThoiGian
-
-  return jsonResponse({ status: 'ok', anhUrl: anhUrl, message: 'Đã lưu thành công' });
+function startPreview() {
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 24, max: 30 } },
+    audio: false
+  }).then(stream => {
+    recStream = stream;
+    applyAutoFocus();
+    setTimeout(applyAutoFocus, 800);
+    const v = document.getElementById('recVideo');
+    v.srcObject = stream; v.muted = true; v.controls = false;
+    v.play().catch(() => {});
+    setRecState('idle');
+  }).catch(err => { showToast('Không mở được camera!', true); showScreen('scannerScreen'); startScan(); });
 }
-
-// ══════════════════════════════════════════════════════
-function uploadImageToDrive(base64Data, maVanDon) {
-  const parts = base64Data.split(',');
-  const mimeType = parts[0].match(/:(.*?);/)[1];
-  const base64 = parts[1];
-
-  const blob = Utilities.newBlob(
-    Utilities.base64Decode(base64),
-    mimeType,
-    (maVanDon || 'VD') + '_' + Date.now() + '.jpg'
-  );
-
-  const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-  const file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-  const fileId = file.getId();
-  return 'https://drive.google.com/uc?id=' + fileId;
-}
-
-// ══════════════════════════════════════════════════════
-// TRA CỨU VẬN ĐƠN theo mã (trả về tất cả lần quét, mới nhất trước)
-// ══════════════════════════════════════════════════════
-function findVanDon(data) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    return jsonResponse({ status: 'error', message: 'Không tìm thấy sheet "' + SHEET_NAME + '"' });
-  }
-
-  const ma = String(data.maVanDon || '').trim();
-  if (!ma) return jsonResponse({ status: 'error', message: 'Thiếu mã vận đơn' });
-
-  const values = sheet.getDataRange().getValues();
-  const tz = Session.getScriptTimeZone();
-  const results = [];
-  for (let i = values.length - 1; i >= 1; i--) { // từ mới nhất, bỏ hàng tiêu đề
-    const rowMa = String(values[i][0] || '').trim();
-    if (rowMa && rowMa === ma) {
-      const t = values[i][1];
-      const thoiGian = (t instanceof Date)
-        ? Utilities.formatDate(t, tz, 'dd/MM/yyyy HH:mm:ss')
-        : String(t || '');
-      results.push({
-        maVanDon: rowMa,
-        thoiGian: thoiGian,
-        anhUrl: String(values[i][2] || ''),
-        nguonHoan: String(values[i][3] || ''),
-        tinhTrang: String(values[i][4] || ''),
-        loaiVanDe: String(values[i][5] || '')
-      });
-    }
-  }
-
-  if (results.length === 0) return jsonResponse({ status: 'notfound', message: 'Chưa có mã ' + ma });
-  return jsonResponse({ status: 'ok', count: results.length, results: results });
-}
-
-// ══════════════════════════════════════════════════════
-// VIDEO: tim dong theo ma roi ghi link video vao cot J (boc) hoac K (dong)
-// boc hang -> khop cot A (1); dong hang -> khop cot H (8); ghi J(10)/K(11)
-function addVideo(data) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) return jsonResponse({ status: 'error', message: 'Không tìm thấy sheet "' + SHEET_NAME + '"' });
-
-  const ma = String(data.maVanDon || '').trim();
-  if (!ma) return jsonResponse({ status: 'error', message: 'Thiếu mã vận đơn' });
-  const loai = (data.loai === 'dong') ? 'dong' : 'boc';
-  const matchCol = (loai === 'dong') ? 7 : 0;   // H=index7 / A=index0
-  const writeCol = (loai === 'dong') ? 11 : 10; // K=11 / J=10 (1-based)
-  const tenCot   = (loai === 'dong') ? 'H' : 'A';
-
-  const values = sheet.getDataRange().getValues();
-  let rowIdx = -1;
-  for (let i = values.length - 1; i >= 1; i--) { // mới nhất trước, bỏ tiêu đề
-    if (String(values[i][matchCol] || '').trim() === ma) { rowIdx = i + 1; break; }
-  }
-  if (rowIdx === -1) return jsonResponse({ status: 'notfound', message: 'Không tìm thấy mã ' + ma + ' ở cột ' + tenCot });
-
-  let videoUrl = '';
+function applyAutoFocus() {
   try {
-    videoUrl = uploadVideoToDrive(data.video, ma, loai);
-  } catch (err) {
-    return jsonResponse({ status: 'error', message: 'Upload video lỗi: ' + err.toString() });
+    if (!recStream) return;
+    const track = recStream.getVideoTracks()[0];
+    if (!track || !track.getCapabilities) return;
+    const caps = track.getCapabilities();
+    if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) {
+      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){});
+    }
+  } catch (e) {}
+}
+function tapFocus() {
+  try {
+    if (!recStream) return;
+    const track = recStream.getVideoTracks()[0];
+    if (!track || !track.getCapabilities) return;
+    const modes = track.getCapabilities().focusMode || [];
+    if (modes.indexOf('single-shot') >= 0) {
+      track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).then(function(){
+        setTimeout(function(){ if (modes.indexOf('continuous') >= 0) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){}); }, 1500);
+      }).catch(function(){});
+      showToast('Đang lấy nét...');
+    } else if (modes.indexOf('continuous') >= 0) {
+      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){});
+      showToast('Đang lấy nét...');
+    }
+  } catch (e) {}
+}
+function pickMime() {
+  const list = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  for (let i = 0; i < list.length; i++) { if (window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i]; }
+  return '';
+}
+function toggleRecord() {
+  if (recState === 'idle') startRecording();
+  else if (recState === 'recording') stopRecording();
+}
+function startRecording() {
+  if (!recStream) return;
+  recChunks = []; recordedBlob = null;
+  const mime = pickMime();
+  try { mediaRecorder = mime ? new MediaRecorder(recStream, { mimeType: mime, videoBitsPerSecond: VIDEO_BITRATE }) : new MediaRecorder(recStream); }
+  catch (e) { try { mediaRecorder = new MediaRecorder(recStream); } catch(e2) { showToast('Thiết bị không hỗ trợ quay video', true); return; } }
+  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+  mediaRecorder.onstop = onRecStop;
+  mediaRecorder.start();
+  recSeconds = 0; updateTimer();
+  recTimer = setInterval(() => { recSeconds++; updateTimer(); if (recSeconds >= MAX_SEC) stopRecording(); }, 1000);
+  setRecState('recording');
+}
+function stopRecording() {
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') { try { mediaRecorder.stop(); } catch(e) {} }
+}
+function onRecStop() {
+  const type = (recChunks[0] && recChunks[0].type) || 'video/webm';
+  recordedBlob = new Blob(recChunks, { type: type });
+  const v = document.getElementById('recVideo');
+  v.srcObject = null;
+  v.src = URL.createObjectURL(recordedBlob);
+  v.muted = false; v.controls = true; v.loop = true;
+  v.play().catch(() => {});
+  setRecState('recorded');
+}
+function updateTimer() {
+  const mm = String(Math.floor(recSeconds / 60)).padStart(2, '0');
+  const ss = String(recSeconds % 60).padStart(2, '0');
+  document.getElementById('recTimer').textContent = mm + ':' + ss + ' / 01:00';
+}
+function setRecState(st) {
+  recState = st;
+  const main = document.getElementById('recMain');
+  const timer = document.getElementById('recTimer');
+  const bottom = document.getElementById('recBottom');
+  const saved = document.getElementById('recSaved');
+  if (st === 'idle') {
+    main.classList.remove('recording'); timer.style.display = 'none';
+    bottom.style.display = 'flex'; saved.classList.remove('show');
+  } else if (st === 'recording') {
+    main.classList.add('recording'); timer.style.display = 'inline-flex';
+    bottom.style.display = 'flex'; saved.classList.remove('show');
+  } else {
+    bottom.style.display = 'none'; timer.style.display = 'none'; saved.classList.add('show');
   }
-  sheet.getRange(rowIdx, writeCol).setValue(videoUrl);
-  return jsonResponse({ status: 'ok', message: 'Đã lưu video', url: videoUrl, row: rowIdx });
+}
+function retakeVideo() {
+  recordedBlob = null;
+  const v = document.getElementById('recVideo');
+  v.controls = false; v.loop = false; v.src = '';
+  if (recStream) { v.srcObject = recStream; v.muted = true; v.play().catch(() => {}); setRecState('idle'); }
+  else { startPreview(); }
+}
+function resetRecord() {
+  recordedBlob = null; recChunks = []; recSeconds = 0;
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  setRecState('idle');
+}
+function stopRecStream() {
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') { try { mediaRecorder.stop(); } catch(e) {} }
+  mediaRecorder = null;
+  if (recStream) { recStream.getTracks().forEach(t => t.stop()); recStream = null; }
+}
+function recBack() { stopRecStream(); startScan(); }
+
+// ── LƯỢC VIDEO ──
+function saveRecord() {
+  if (!recordedBlob) { showToast('Chưa có video', true); return; }
+  const rec = { maVanDon: state.maVanDon, loai: state.loai, blob: recordedBlob, nhanVien: state.user.name, maNhanVien: state.user.code, ts: Date.now() };
+  vdbAdd(rec).then(() => { refreshPending(); processVideoQueue(); }).catch(() => { showToast('Không lưu tạm được video', true); });
+  showToast('✓ Đã thêm video ' + state.maVanDon + ' (đang gửi nền)');
+  recordedBlob = null;
+  stopRecStream();
+  setTimeout(() => startScan(), 300);
 }
 
-function uploadVideoToDrive(dataUrl, maVanDon, loai) {
-  dataUrl = String(dataUrl || '');
-  const marker = ';base64,';
-  const idx = dataUrl.indexOf(marker);
-  if (idx < 0) throw new Error('Video không hợp lệ');
-  const mimeType = (dataUrl.substring(5, idx).split(';')[0]) || 'video/webm';
-  const b64 = dataUrl.substring(idx + marker.length);
-  const ext = (mimeType.indexOf('mp4') >= 0) ? '.mp4' : '.webm';
-  const blob = Utilities.newBlob(Utilities.base64Decode(b64), mimeType, (maVanDon || 'VD') + '_' + loai + '_' + Date.now() + ext);
-  const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-  const file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  return 'https://drive.google.com/file/d/' + file.getId() + '/view';
+function refreshPending() {
+  vdbCount().then((n) => {
+    pendingCount = n;
+    const badge = document.getElementById('videoPending');
+    if (!badge) return;
+    if (n > 0) { badge.style.display = 'flex'; document.getElementById('videoPendingNum').textContent = n; }
+    else { badge.style.display = 'none'; }
+  }).catch(() => {});
 }
 
-function jsonResponse(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+function processVideoQueue() {
+  if (uploadingVideo) return;
+  uploadingVideo = true;
+  vdbGetFirst().then((item) => {
+    if (!item) { uploadingVideo = false; currentCtrl = null; refreshPending(); return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const ctrl = new AbortController();
+      currentCtrl = ctrl;
+      const timer = setTimeout(() => ctrl.abort(), UPLOAD_TIMEOUT);
+      try {
+        const payload = { action: 'addVideo', maVanDon: item.maVanDon, loai: item.loai, video: reader.result, nhanVien: item.nhanVien, maNhanVien: item.maNhanVien };
+        const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload), signal: ctrl.signal });
+        clearTimeout(timer);
+        const json = await res.json();
+        if (json.status === 'ok') { await vdbDelete(item.id); delete attemptMap[item.id]; showToast('✓ Đã lưu video ' + item.maVanDon); }
+        else { await vdbDelete(item.id); delete attemptMap[item.id]; showToast('Video ' + item.maVanDon + ': ' + (json.message || 'lỗi'), true); }
+        uploadingVideo = false; currentCtrl = null;
+        refreshPending();
+        processVideoQueue();
+      } catch (e) {
+        clearTimeout(timer);
+        uploadingVideo = false; currentCtrl = null;
+        if (skippedIds.has(item.id)) { skippedIds.delete(item.id); refreshPending(); setTimeout(processVideoQueue, 300); return; }
+        attemptMap[item.id] = (attemptMap[item.id] || 0) + 1;
+        if (attemptMap[item.id] >= MAX_ATTEMPTS) {
+          vdbDelete(item.id).then(() => { delete attemptMap[item.id]; showToast('Bỏ video ' + item.maVanDon + ' sau ' + MAX_ATTEMPTS + ' lần lỗi', true); refreshPending(); processVideoQueue(); });
+        } else {
+          showToast('Gửi lại video ' + item.maVanDon + ' (lần ' + (attemptMap[item.id] + 1) + ')...', true);
+          setTimeout(processVideoQueue, 5000);
+        }
+      }
+    };
+    reader.onerror = () => { uploadingVideo = false; currentCtrl = null; vdbDelete(item.id).then(() => { refreshPending(); processVideoQueue(); }); };
+    reader.readAsDataURL(item.blob);
+  }).catch(() => { uploadingVideo = false; currentCtrl = null; });
 }
+
+// Bỏ ĐÚNG video đang kẹt (cái đầu hàng đang gửi), giữ các video còn lại
+function skipCurrent() {
+  vdbGetFirst().then((item) => {
+    if (!item) { showToast('Không có video nào đang chờ'); refreshPending(); return; }
+    if (!confirm('Bỏ video đang kẹt "' + item.maVanDon + '"? Các video khác vẫn gửi tiếp.')) return;
+    skippedIds.add(item.id);
+    delete attemptMap[item.id];
+    if (currentCtrl) { try { currentCtrl.abort(); } catch (e) {} }
+    vdbDelete(item.id).then(() => {
+      uploadingVideo = false; currentCtrl = null;
+      refreshPending();
+      showToast('Đã bỏ video ' + item.maVanDon + ', tiếp tục gửi video khác');
+      setTimeout(processVideoQueue, 300);
+    });
+  });
+}
+
+// ── IndexedDB: lưu bền video chưa gửi (sống qua đóng app) ──
+function openVDB() {
+  return new Promise((resolve, reject) => {
+    if (vdb) return resolve(vdb);
+    const req = indexedDB.open('vd_video_db', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+    };
+    req.onsuccess = (e) => { vdb = e.target.result; resolve(vdb); };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+function vdbAdd(rec) {
+  return openVDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').add(rec);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  }));
+}
+function vdbGetFirst() {
+  return openVDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readonly');
+    const cur = tx.objectStore('queue').openCursor();
+    cur.onsuccess = (e) => { const c = e.target.result; res(c ? c.value : null); };
+    cur.onerror = () => rej(cur.error);
+  }));
+}
+function vdbDelete(id) {
+  return openVDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').delete(id);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  }));
+}
+function vdbCount() {
+  return openVDB().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readonly');
+    const r = tx.objectStore('queue').count();
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+}
+
+// ── UTILS ──
+function showLoading(t) { document.getElementById('loadingText').textContent = t; document.getElementById('loadingOverlay').classList.add('show'); }
+function hideLoading() { document.getElementById('loadingOverlay').classList.remove('show'); }
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '') + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
