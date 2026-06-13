@@ -188,7 +188,7 @@
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfKtMNbxGUDK6K_2Bdr1lch4U6qiQ8j8z8qaMyx_vYIvfUtJ0iQwwhp4QdCmitFEdx/exec';
 const MAX_SEC = 60;
-const VIDEO_BITRATE = 4000000; // ~4 Mbps (1080p)
+const VIDEO_BITRATE = 2500000; // ~2.5 Mbps (1080p VP9)
 
 const LOAI_LABEL = { boc: 'Video bóc hàng', dong: 'Video đóng hàng' };
 
@@ -321,7 +321,7 @@ function startPreview() {
   }).catch(err => { showToast('Không mở được camera!', true); showScreen('scannerScreen'); startScan(); });
 }
 function pickMime() {
-  const list = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  const list = ['video/webm;codecs=vp9', 'video/mp4', 'video/webm;codecs=vp8', 'video/webm'];
   for (let i = 0; i < list.length; i++) { if (window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i]; }
   return '';
 }
