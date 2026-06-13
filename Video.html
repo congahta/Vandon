@@ -188,7 +188,7 @@
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfKtMNbxGUDK6K_2Bdr1lch4U6qiQ8j8z8qaMyx_vYIvfUtJ0iQwwhp4QdCmitFEdx/exec';
 const MAX_SEC = 60;
-const VIDEO_BITRATE = 1800000; // ~1.8 Mbps (1080p VP9)
+const VIDEO_BITRATE = 2000000; // ~2.0 Mbps (1080p, 24fps)
 
 const LOAI_LABEL = { boc: 'Video bóc hàng', dong: 'Video đóng hàng' };
 
@@ -315,7 +315,7 @@ function openRecord() {
 }
 function startPreview() {
   navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 24, max: 30 } },
     audio: false
   }).then(stream => {
     recStream = stream;
