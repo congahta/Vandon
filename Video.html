@@ -112,7 +112,7 @@
 
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div class="loading-text" id="loadingText">Đang tải...</div></div>
 <div class="toast" id="toast"></div>
-<div class="pending-badge" id="videoPending"><div class="dot"></div>Đang gửi <span id="videoPendingNum">0</span></div>
+<div class="pending-badge" id="videoPending" onclick="clearQueue()" title="Chạm để xoá hàng đợi" style="cursor:pointer;"><div class="dot"></div>Đang gửi <span id="videoPendingNum">0</span> · ✕</div>
 <div class="manual-overlay" id="manualOverlay">
   <div class="manual-box">
     <div class="manual-title">Nhập mã vận đơn</div>
@@ -188,7 +188,7 @@
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfKtMNbxGUDK6K_2Bdr1lch4U6qiQ8j8z8qaMyx_vYIvfUtJ0iQwwhp4QdCmitFEdx/exec';
 const MAX_SEC = 60;
-const VIDEO_BITRATE = 2500000; // ~2.5 Mbps (1080p VP9)
+const VIDEO_BITRATE = 1800000; // ~1.8 Mbps (1080p VP9)
 
 const LOAI_LABEL = { boc: 'Video bóc hàng', dong: 'Video đóng hàng' };
 
@@ -201,6 +201,9 @@ let recTimer = null, recSeconds = 0, recState = 'idle';
 let uploadingVideo = false;
 let vdb = null;
 let pendingCount = 0;
+let attemptMap = {};
+const MAX_ATTEMPTS = 3;
+const UPLOAD_TIMEOUT = 120000;
 function setVH(){ document.documentElement.style.setProperty('--vh', window.innerHeight + 'px'); }
 setVH();
 window.addEventListener('resize', setVH);
@@ -425,23 +428,43 @@ function processVideoQueue() {
     if (!item) { uploadingVideo = false; refreshPending(); return; }
     const reader = new FileReader();
     reader.onload = async () => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), UPLOAD_TIMEOUT);
       try {
         const payload = { action: 'addVideo', maVanDon: item.maVanDon, loai: item.loai, video: reader.result, nhanVien: item.nhanVien, maNhanVien: item.maNhanVien };
-        const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload), signal: ctrl.signal });
+        clearTimeout(timer);
         const json = await res.json();
-        if (json.status === 'ok') { await vdbDelete(item.id); showToast('✓ Đã lưu video ' + item.maVanDon); }
-        else { await vdbDelete(item.id); showToast('Video ' + item.maVanDon + ': ' + (json.message || 'lỗi'), true); }
+        if (json.status === 'ok') { await vdbDelete(item.id); delete attemptMap[item.id]; showToast('✓ Đã lưu video ' + item.maVanDon); }
+        else { await vdbDelete(item.id); delete attemptMap[item.id]; showToast('Video ' + item.maVanDon + ': ' + (json.message || 'lỗi'), true); }
         uploadingVideo = false;
         refreshPending();
         processVideoQueue();
       } catch (e) {
-        uploadingVideo = false; // lỗi mạng → giữ lại, tự thử lại sau
-        setTimeout(processVideoQueue, 5000);
+        clearTimeout(timer);
+        attemptMap[item.id] = (attemptMap[item.id] || 0) + 1;
+        uploadingVideo = false;
+        if (attemptMap[item.id] >= MAX_ATTEMPTS) {
+          vdbDelete(item.id).then(() => { delete attemptMap[item.id]; showToast('Bỏ video ' + item.maVanDon + ' sau ' + MAX_ATTEMPTS + ' lần gửi lỗi', true); refreshPending(); processVideoQueue(); });
+        } else {
+          showToast('Gửi lại video ' + item.maVanDon + ' (lần ' + (attemptMap[item.id] + 1) + ')...', true);
+          setTimeout(processVideoQueue, 5000);
+        }
       }
     };
     reader.onerror = () => { uploadingVideo = false; vdbDelete(item.id).then(() => { refreshPending(); processVideoQueue(); }); };
     reader.readAsDataURL(item.blob);
   }).catch(() => { uploadingVideo = false; });
+}
+
+function clearQueue() {
+  if (!confirm('Xoá toàn bộ video đang chờ gửi?')) return;
+  openVDB().then((db) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').clear();
+    tx.oncomplete = () => { attemptMap = {}; uploadingVideo = false; refreshPending(); showToast('Đã xoá hàng đợi'); };
+    tx.onerror = () => showToast('Xoá hàng đợi lỗi', true);
+  });
 }
 
 // ── IndexedDB: lưu bền video chưa gửi (sống qua đóng app) ──
