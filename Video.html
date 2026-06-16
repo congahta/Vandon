@@ -112,7 +112,7 @@
 
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div class="loading-text" id="loadingText">Đang tải...</div></div>
 <div class="toast" id="toast"></div>
-<div class="pending-badge" id="videoPending" onclick="skipCurrent()" title="Chạm để bỏ video đang kẹt" style="cursor:pointer;"><div class="dot"></div>Đang gửi <span id="videoPendingNum">0</span> · ✕</div>
+<div class="pending-badge" id="videoPending"><div class="dot"></div>Đang gửi <span id="videoPendingNum">0</span></div>
 <div class="manual-overlay" id="manualOverlay">
   <div class="manual-box">
     <div class="manual-title">Nhập mã vận đơn</div>
@@ -168,28 +168,34 @@
 </div>
 
 <!-- RECORD -->
+<input type="file" id="videoFileInput" accept="video/*" style="display:none" onchange="onVideoPicked(event)">
 <div class="screen" id="recordScreen">
-  <video id="recVideo" autoplay playsinline muted onclick="tapFocus()"></video>
-  <div class="rec-top">
-    <span class="rec-code" id="recCode">📦 —</span>
-    <span style="background:rgba(0,0,0,0.45);color:#fff;padding:4px 12px;border-radius:50px;font-size:11px;">Chạm màn hình để lấy nét</span>
-    <span class="rec-timer" id="recTimer">00:00 / 01:00</span>
+  <div class="app-header">
+    <div class="header-left">
+      <button class="btn-back" onclick="recBack()">←</button>
+      <div class="form-title">Quay video</div>
+    </div>
   </div>
-  <div class="rec-bottom" id="recBottom">
-    <button class="rec-side" onclick="recBack()">✕</button>
-    <button class="rec-main" id="recMain" onclick="toggleRecord()"></button>
-    <div style="width:48px;"></div>
-  </div>
-  <div class="rec-saved" id="recSaved">
-    <button class="rec-retake" onclick="retakeVideo()">↺ Quay lại</button>
-    <button class="rec-save" onclick="saveRecord()">💾 Lưu video</button>
+  <div class="choice-body">
+    <div id="recCode" style="font-size:14px;font-weight:700;color:var(--accent);margin-bottom:8px;word-break:break-all;">📦 —</div>
+    <div id="recIdle">
+      <button class="choice-btn" style="justify-content:center;" onclick="openExternalCamera()"><span class="choice-icon">📹</span> Mở camera quay</button>
+      <div class="choice-sub" style="text-align:center;margin-top:10px;">Quay xong nhấn ✓ trên camera để quay lại đây, rồi bấm Lưu.</div>
+    </div>
+    <div id="recPreview" style="display:none;">
+      <video id="recVideo" playsinline controls style="width:100%;border-radius:12px;background:#000;"></video>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="rec-retake" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:14px;border-radius:10px;font-weight:600;" onclick="openExternalCamera()">↺ Quay lại</button>
+        <button class="rec-save" style="flex:2;" onclick="saveRecord()">💾 Lưu video</button>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfKtMNbxGUDK6K_2Bdr1lch4U6qiQ8j8z8qaMyx_vYIvfUtJ0iQwwhp4QdCmitFEdx/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJaJFbmzUlvtTcxB0NmGOOv7PFTUPMLtZzrG4qUhKqy3pz4KnptZKUnHbb6DBwwDRwZA/exec';
 const MAX_SEC = 60;
-const VIDEO_BITRATE = 6000000; // ~3.5 Mbps (1080p, 24fps)
+const VIDEO_BITRATE = 1500000; // ~1.5 Mbps (720p)
 
 const LOAI_LABEL = { boc: 'Video bóc hàng', dong: 'Video đóng hàng' };
 
@@ -202,11 +208,6 @@ let recTimer = null, recSeconds = 0, recState = 'idle';
 let uploadingVideo = false;
 let vdb = null;
 let pendingCount = 0;
-let attemptMap = {};
-const MAX_ATTEMPTS = 3;
-const UPLOAD_TIMEOUT = 120000;
-let currentCtrl = null;
-const skippedIds = new Set();
 function setVH(){ document.documentElement.style.setProperty('--vh', window.innerHeight + 'px'); }
 setVH();
 window.addEventListener('resize', setVH);
@@ -309,131 +310,31 @@ function onScanned(code) {
 
 // ── QUAY VIDEO ──
 function openRecord() {
-  resetRecord();
-  document.getElementById('recCode').textContent = '📦 ' + (state.maVanDon || '') + ' · ' + (LOAI_LABEL[state.loai] || '');
-  showScreen('recordScreen');
-  startPreview();
-}
-function startPreview() {
-  navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 24, max: 30 } },
-    audio: false
-  }).then(stream => {
-    recStream = stream;
-    applyAutoFocus();
-    setTimeout(applyAutoFocus, 800);
-    const v = document.getElementById('recVideo');
-    v.srcObject = stream; v.muted = true; v.controls = false;
-    v.play().catch(() => {});
-    setRecState('idle');
-  }).catch(err => { showToast('Không mở được camera!', true); showScreen('scannerScreen'); startScan(); });
-}
-function applyAutoFocus() {
-  try {
-    if (!recStream) return;
-    const track = recStream.getVideoTracks()[0];
-    if (!track || !track.getCapabilities) return;
-    const caps = track.getCapabilities();
-    if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) {
-      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){});
-    }
-  } catch (e) {}
-}
-function tapFocus() {
-  try {
-    if (!recStream) return;
-    const track = recStream.getVideoTracks()[0];
-    if (!track || !track.getCapabilities) return;
-    const modes = track.getCapabilities().focusMode || [];
-    if (modes.indexOf('single-shot') >= 0) {
-      track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).then(function(){
-        setTimeout(function(){ if (modes.indexOf('continuous') >= 0) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){}); }, 1500);
-      }).catch(function(){});
-      showToast('Đang lấy nét...');
-    } else if (modes.indexOf('continuous') >= 0) {
-      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){});
-      showToast('Đang lấy nét...');
-    }
-  } catch (e) {}
-}
-function pickMime() {
-  const list = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-  for (let i = 0; i < list.length; i++) { if (window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i]; }
-  return '';
-}
-function toggleRecord() {
-  if (recState === 'idle') startRecording();
-  else if (recState === 'recording') stopRecording();
-}
-function startRecording() {
-  if (!recStream) return;
-  recChunks = []; recordedBlob = null;
-  const mime = pickMime();
-  try { mediaRecorder = mime ? new MediaRecorder(recStream, { mimeType: mime, videoBitsPerSecond: VIDEO_BITRATE }) : new MediaRecorder(recStream); }
-  catch (e) { try { mediaRecorder = new MediaRecorder(recStream); } catch(e2) { showToast('Thiết bị không hỗ trợ quay video', true); return; } }
-  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
-  mediaRecorder.onstop = onRecStop;
-  mediaRecorder.start();
-  recSeconds = 0; updateTimer();
-  recTimer = setInterval(() => { recSeconds++; updateTimer(); if (recSeconds >= MAX_SEC) stopRecording(); }, 1000);
-  setRecState('recording');
-}
-function stopRecording() {
-  if (recTimer) { clearInterval(recTimer); recTimer = null; }
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') { try { mediaRecorder.stop(); } catch(e) {} }
-}
-function onRecStop() {
-  const type = (recChunks[0] && recChunks[0].type) || 'video/webm';
-  recordedBlob = new Blob(recChunks, { type: type });
-  const v = document.getElementById('recVideo');
-  v.srcObject = null;
-  v.src = URL.createObjectURL(recordedBlob);
-  v.muted = false; v.controls = true; v.loop = true;
-  v.play().catch(() => {});
-  setRecState('recorded');
-}
-function updateTimer() {
-  const mm = String(Math.floor(recSeconds / 60)).padStart(2, '0');
-  const ss = String(recSeconds % 60).padStart(2, '0');
-  document.getElementById('recTimer').textContent = mm + ':' + ss + ' / 01:00';
-}
-function setRecState(st) {
-  recState = st;
-  const main = document.getElementById('recMain');
-  const timer = document.getElementById('recTimer');
-  const bottom = document.getElementById('recBottom');
-  const saved = document.getElementById('recSaved');
-  if (st === 'idle') {
-    main.classList.remove('recording'); timer.style.display = 'none';
-    bottom.style.display = 'flex'; saved.classList.remove('show');
-  } else if (st === 'recording') {
-    main.classList.add('recording'); timer.style.display = 'inline-flex';
-    bottom.style.display = 'flex'; saved.classList.remove('show');
-  } else {
-    bottom.style.display = 'none'; timer.style.display = 'none'; saved.classList.add('show');
-  }
-}
-function retakeVideo() {
   recordedBlob = null;
+  document.getElementById('recCode').textContent = '📦 ' + (state.maVanDon || '') + ' · ' + (LOAI_LABEL[state.loai] || '');
+  document.getElementById('recIdle').style.display = 'block';
+  document.getElementById('recPreview').style.display = 'none';
+  showScreen('recordScreen');
+  setTimeout(openExternalCamera, 250);
+}
+function openExternalCamera() {
+  const inp = document.getElementById('videoFileInput');
+  if (!inp) return;
+  inp.value = '';
+  inp.click();
+}
+function onVideoPicked(e) {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  recordedBlob = f;
   const v = document.getElementById('recVideo');
-  v.controls = false; v.loop = false; v.src = '';
-  if (recStream) { v.srcObject = recStream; v.muted = true; v.play().catch(() => {}); setRecState('idle'); }
-  else { startPreview(); }
+  try { v.src = URL.createObjectURL(f); } catch (err) {}
+  document.getElementById('recIdle').style.display = 'none';
+  document.getElementById('recPreview').style.display = 'block';
 }
-function resetRecord() {
-  recordedBlob = null; recChunks = []; recSeconds = 0;
-  if (recTimer) { clearInterval(recTimer); recTimer = null; }
-  setRecState('idle');
-}
-function stopRecStream() {
-  if (recTimer) { clearInterval(recTimer); recTimer = null; }
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') { try { mediaRecorder.stop(); } catch(e) {} }
-  mediaRecorder = null;
-  if (recStream) { recStream.getTracks().forEach(t => t.stop()); recStream = null; }
-}
-function recBack() { stopRecStream(); startScan(); }
+function stopRecStream() {}
+function recBack() { startScan(); }
 
-// ── LƯỢC VIDEO ──
 function saveRecord() {
   if (!recordedBlob) { showToast('Chưa có video', true); return; }
   const rec = { maVanDon: state.maVanDon, loai: state.loai, blob: recordedBlob, nhanVien: state.user.name, maNhanVien: state.user.code, ts: Date.now() };
@@ -458,55 +359,26 @@ function processVideoQueue() {
   if (uploadingVideo) return;
   uploadingVideo = true;
   vdbGetFirst().then((item) => {
-    if (!item) { uploadingVideo = false; currentCtrl = null; refreshPending(); return; }
+    if (!item) { uploadingVideo = false; refreshPending(); return; }
     const reader = new FileReader();
     reader.onload = async () => {
-      const ctrl = new AbortController();
-      currentCtrl = ctrl;
-      const timer = setTimeout(() => ctrl.abort(), UPLOAD_TIMEOUT);
       try {
         const payload = { action: 'addVideo', maVanDon: item.maVanDon, loai: item.loai, video: reader.result, nhanVien: item.nhanVien, maNhanVien: item.maNhanVien };
-        const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload), signal: ctrl.signal });
-        clearTimeout(timer);
+        const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
         const json = await res.json();
-        if (json.status === 'ok') { await vdbDelete(item.id); delete attemptMap[item.id]; showToast('✓ Đã lưu video ' + item.maVanDon); }
-        else { await vdbDelete(item.id); delete attemptMap[item.id]; showToast('Video ' + item.maVanDon + ': ' + (json.message || 'lỗi'), true); }
-        uploadingVideo = false; currentCtrl = null;
+        if (json.status === 'ok') { await vdbDelete(item.id); showToast('✓ Đã lưu video ' + item.maVanDon); }
+        else { await vdbDelete(item.id); showToast('Video ' + item.maVanDon + ': ' + (json.message || 'lỗi'), true); }
+        uploadingVideo = false;
         refreshPending();
         processVideoQueue();
       } catch (e) {
-        clearTimeout(timer);
-        uploadingVideo = false; currentCtrl = null;
-        if (skippedIds.has(item.id)) { skippedIds.delete(item.id); refreshPending(); setTimeout(processVideoQueue, 300); return; }
-        attemptMap[item.id] = (attemptMap[item.id] || 0) + 1;
-        if (attemptMap[item.id] >= MAX_ATTEMPTS) {
-          vdbDelete(item.id).then(() => { delete attemptMap[item.id]; showToast('Bỏ video ' + item.maVanDon + ' sau ' + MAX_ATTEMPTS + ' lần lỗi', true); refreshPending(); processVideoQueue(); });
-        } else {
-          showToast('Gửi lại video ' + item.maVanDon + ' (lần ' + (attemptMap[item.id] + 1) + ')...', true);
-          setTimeout(processVideoQueue, 5000);
-        }
+        uploadingVideo = false; // lỗi mạng → giữ lại, tự thử lại sau
+        setTimeout(processVideoQueue, 5000);
       }
     };
-    reader.onerror = () => { uploadingVideo = false; currentCtrl = null; vdbDelete(item.id).then(() => { refreshPending(); processVideoQueue(); }); };
+    reader.onerror = () => { uploadingVideo = false; vdbDelete(item.id).then(() => { refreshPending(); processVideoQueue(); }); };
     reader.readAsDataURL(item.blob);
-  }).catch(() => { uploadingVideo = false; currentCtrl = null; });
-}
-
-// Bỏ ĐÚNG video đang kẹt (cái đầu hàng đang gửi), giữ các video còn lại
-function skipCurrent() {
-  vdbGetFirst().then((item) => {
-    if (!item) { showToast('Không có video nào đang chờ'); refreshPending(); return; }
-    if (!confirm('Bỏ video đang kẹt "' + item.maVanDon + '"? Các video khác vẫn gửi tiếp.')) return;
-    skippedIds.add(item.id);
-    delete attemptMap[item.id];
-    if (currentCtrl) { try { currentCtrl.abort(); } catch (e) {} }
-    vdbDelete(item.id).then(() => {
-      uploadingVideo = false; currentCtrl = null;
-      refreshPending();
-      showToast('Đã bỏ video ' + item.maVanDon + ', tiếp tục gửi video khác');
-      setTimeout(processVideoQueue, 300);
-    });
-  });
+  }).catch(() => { uploadingVideo = false; });
 }
 
 // ── IndexedDB: lưu bền video chưa gửi (sống qua đóng app) ──
