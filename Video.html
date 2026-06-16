@@ -168,35 +168,27 @@
 </div>
 
 <!-- RECORD -->
-<input type="file" id="videoFileInput" accept="video/*" style="display:none" onchange="onVideoPicked(event)">
 <div class="screen" id="recordScreen">
-  <div class="app-header">
-    <div class="header-left">
-      <button class="btn-back" onclick="recBack()">←</button>
-      <div class="form-title">Quay video</div>
-    </div>
+  <video id="recVideo" autoplay playsinline muted ontouchstart="tapFocus(event)" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>
+  <div class="rec-top">
+    <div class="rec-code" id="recCode">📦 —</div>
+    <div class="rec-timer" id="recTimer">00:00</div>
   </div>
-  <div class="choice-body">
-    <div id="recCode" style="font-size:14px;font-weight:700;color:var(--accent);margin-bottom:8px;word-break:break-all;">📦 —</div>
-    <div id="recIdle">
-      <button class="choice-btn" style="justify-content:center;" onclick="openExternalCamera()"><span class="choice-icon">📹</span> Mở camera quay</button>
-      <button class="choice-btn" style="justify-content:center;margin-top:12px;" onclick="pickFromGallery()"><span class="choice-icon">📁</span> Chọn video vừa quay</button>
-      <div class="choice-sub" style="text-align:center;margin-top:10px;">📹 Camera trong app thường bị giới hạn ~30s. Muốn quay DÀI hơn: mở app Camera điện thoại quay sẵn (nhớ tắt tiếng), rồi bấm "📁 Chọn video vừa quay" để chọn clip trong thư viện. Có video sẽ hiện nút 💾 Lưu video.</div>
-    </div>
-    <div id="recPreview" style="display:none;">
-      <video id="recVideo" playsinline controls style="width:100%;max-height:46vh;object-fit:contain;border-radius:12px;background:#000;"></video>
-      <div style="display:flex;gap:10px;margin-top:14px;">
-        <button class="rec-retake" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:14px;border-radius:10px;font-weight:600;" onclick="openExternalCamera()">↺ Quay lại</button>
-        <button class="rec-save" style="flex:2;" onclick="saveRecord()">💾 Lưu video</button>
-      </div>
-    </div>
+  <div class="rec-bottom" id="recControls">
+    <button class="rec-side" onclick="recBack()">✕</button>
+    <button class="rec-main" id="recMainBtn" onclick="toggleRecord()"></button>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="rec-saved" id="recSaved">
+    <button class="rec-retake" onclick="retakeRecord()">↺ Quay lại</button>
+    <button class="rec-save" onclick="saveRecord()">💾 Lưu video</button>
   </div>
 </div>
 
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJaJFbmzUlvtTcxB0NmGOOv7PFTUPMLtZzrG4qUhKqy3pz4KnptZKUnHbb6DBwwDRwZA/exec';
 const MAX_SEC = 60;
-const VIDEO_BITRATE = 1500000; // ~1.5 Mbps (720p)
+const VIDEO_BITRATE = 2500000; // ~2.5 Mbps — chinh tai day (4Mbps=4000000). Apps Script ~50MB/video.
 
 const LOAI_LABEL = { boc: 'Video bóc hàng', dong: 'Video đóng hàng' };
 
@@ -308,10 +300,15 @@ function onScanned(code) {
   state.maVanDon = code;
   stopScanner().then(() => { setTimeout(() => openRecord(), 250); });
 }
+window.onNativeVideoDone = function(ok){ if (ok) { showToast('✓ Đã gửi video ' + (state.maVanDon || '')); } setTimeout(function(){ startScan(); }, 300); };
 
 // ── QUAY VIDEO ──
 function openRecord() {
   recordedBlob = null;
+  if (window.AndroidVideo && window.AndroidVideo.record) {
+    window.AndroidVideo.record(state.maVanDon || '', state.loai || 'boc', (state.user && state.user.name) || '', (state.user && state.user.code) || '');
+    return;
+  }
   document.getElementById('recCode').textContent = '📦 ' + (state.maVanDon || '') + ' · ' + (LOAI_LABEL[state.loai] || '');
   document.getElementById('recIdle').style.display = 'block';
   document.getElementById('recPreview').style.display = 'none';
