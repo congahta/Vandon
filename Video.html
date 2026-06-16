@@ -180,7 +180,8 @@
     <div id="recCode" style="font-size:14px;font-weight:700;color:var(--accent);margin-bottom:8px;word-break:break-all;">📦 —</div>
     <div id="recIdle">
       <button class="choice-btn" style="justify-content:center;" onclick="openExternalCamera()"><span class="choice-icon">📹</span> Mở camera quay</button>
-      <div class="choice-sub" style="text-align:center;margin-top:10px;">Quay xong nhấn ✓ trên camera để quay lại đây, rồi bấm Lưu.</div>
+      <button class="choice-btn" style="justify-content:center;margin-top:12px;" onclick="pickFromGallery()"><span class="choice-icon">📁</span> Chọn video vừa quay</button>
+      <div class="choice-sub" style="text-align:center;margin-top:10px;">Quay xong nhấn ✓ để quay lại đây. Nếu KHÔNG thấy nút Lưu, bấm "Chọn video vừa quay" rồi chọn clip vừa quay trong thư viện.</div>
     </div>
     <div id="recPreview" style="display:none;">
       <video id="recVideo" playsinline controls style="width:100%;border-radius:12px;background:#000;"></video>
@@ -323,9 +324,10 @@ function openExternalCamera() {
   inp.value = '';
   inp.click();
 }
+function pickFromGallery() { openExternalCamera(); }
 function onVideoPicked(e) {
   const f = e.target.files && e.target.files[0];
-  if (!f) return;
+  if (!f) { showToast('Chưa chọn được video — bấm "Chọn video vừa quay" rồi chọn clip trong thư viện', true); return; }
   recordedBlob = f;
   const v = document.getElementById('recVideo');
   try { v.src = URL.createObjectURL(f); } catch (err) {}
