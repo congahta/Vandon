@@ -155,6 +155,7 @@
 
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div class="loading-text" id="loadingText">Đang lưu...</div></div>
 <div class="toast" id="toast"></div>
+<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoPicked(event)">
 <div class="pending-badge" id="pendingBadge"><div class="dot"></div>Đang lưu <span id="pendingNum">0</span></div>
 <div class="manual-overlay" id="manualOverlay">
   <div class="manual-box">
@@ -580,6 +581,8 @@ function onCodeDetected(code) {
 // ── CAMERA CHỤP ẢNH ──
 function openCameraStream(fromFormFlag) {
   fromForm = fromFormFlag;
+  var __pi = document.getElementById('photoInput');
+  if (__pi) { __pi.value=''; __pi.click(); return; }
   showScreen('cameraScreen');
 
   if (cameraStream) {
@@ -648,6 +651,27 @@ function retakeScan() {
   }, 300);
 }
 
+function onPhotoPicked(e) {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const img = new Image();
+  const url = URL.createObjectURL(f);
+  img.onload = function(){
+    const maxW = 1200; let w = img.naturalWidth, h = img.naturalHeight;
+    if (w > maxW) { h = Math.round(h*maxW/w); w = maxW; }
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    state.photoBase64 = c.toDataURL('image/jpeg', 0.85);
+    URL.revokeObjectURL(url);
+    const preview = document.getElementById('photoPreview');
+    preview.classList.add('has-photo');
+    preview.innerHTML = '<img src="' + state.photoBase64 + '" alt="anh">';
+    renderChips();
+    showScreen('formScreen');
+  };
+  img.onerror = function(){ URL.revokeObjectURL(url); showToast('Khong doc duoc anh', true); };
+  img.src = url;
+}
 function stopCameraStream() {
   if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
 }
