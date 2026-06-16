@@ -467,8 +467,12 @@ function handleScanResult(code) {
   if (scanPurpose === 'lookup') { stopScanner().then(() => doLookup(code)); }
   else { onCodeDetected(code); }
 }
+// -- Cau noi quet goc Android (ML Kit) — APK goi vao day --
+window.onNativeScan = function(code){ handleScanResult(code); };
+window.onNativeScanCancel = function(){ if (scanPurpose === 'capture') { openManual(); } };
 function startLookupScan() {
   scanPurpose = 'lookup';
+  if (window.AndroidScanner && window.AndroidScanner.scanBarcode) { stopCameraStream(); window.AndroidScanner.scanBarcode(); return; }
   stopCameraStream();
   document.getElementById('scannerTag').textContent = 'Tra cứu';
   showScreen('scannerScreen');
@@ -529,6 +533,7 @@ function tagText() { return [state.nguonHoan, state.tinhTrang, state.loaiVanDe].
 function startScan() {
   fromForm = false;
   scanPurpose = 'capture';
+  if (window.AndroidScanner && window.AndroidScanner.scanBarcode) { stopCameraStream(); window.AndroidScanner.scanBarcode(); return; }
   stopCameraStream();
   document.getElementById('scannerTag').textContent = tagText();
   showScreen('scannerScreen');
