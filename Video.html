@@ -78,7 +78,7 @@
     .manual-ok { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; }
 
     /* RECORD */
-    #recordScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; height: var(--vh, 100dvh); z-index: 50; }
+    #recordScreen { background: #000; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100dvh; height: var(--vh, 100dvh); z-index: 50; overflow-y: auto; }
     #recordScreen.screen.active { display: block; }
     #recVideo { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
     .rec-top { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
@@ -181,10 +181,10 @@
     <div id="recIdle">
       <button class="choice-btn" style="justify-content:center;" onclick="openExternalCamera()"><span class="choice-icon">📹</span> Mở camera quay</button>
       <button class="choice-btn" style="justify-content:center;margin-top:12px;" onclick="pickFromGallery()"><span class="choice-icon">📁</span> Chọn video vừa quay</button>
-      <div class="choice-sub" style="text-align:center;margin-top:10px;">Quay xong nhấn ✓ để quay lại đây. Nếu KHÔNG thấy nút Lưu, bấm "Chọn video vừa quay" rồi chọn clip vừa quay trong thư viện.</div>
+      <div class="choice-sub" style="text-align:center;margin-top:10px;">📹 Camera trong app thường bị giới hạn ~30s. Muốn quay DÀI hơn: mở app Camera điện thoại quay sẵn (nhớ tắt tiếng), rồi bấm "📁 Chọn video vừa quay" để chọn clip trong thư viện. Có video sẽ hiện nút 💾 Lưu video.</div>
     </div>
     <div id="recPreview" style="display:none;">
-      <video id="recVideo" playsinline controls style="width:100%;border-radius:12px;background:#000;"></video>
+      <video id="recVideo" playsinline controls style="width:100%;max-height:46vh;object-fit:contain;border-radius:12px;background:#000;"></video>
       <div style="display:flex;gap:10px;margin-top:14px;">
         <button class="rec-retake" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:14px;border-radius:10px;font-weight:600;" onclick="openExternalCamera()">↺ Quay lại</button>
         <button class="rec-save" style="flex:2;" onclick="saveRecord()">💾 Lưu video</button>
@@ -316,7 +316,6 @@ function openRecord() {
   document.getElementById('recIdle').style.display = 'block';
   document.getElementById('recPreview').style.display = 'none';
   showScreen('recordScreen');
-  setTimeout(openExternalCamera, 250);
 }
 function openExternalCamera() {
   const inp = document.getElementById('videoFileInput');
