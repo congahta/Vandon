@@ -131,10 +131,35 @@
     .form-footer { padding: 12px 20px max(16px, env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--border); flex-shrink: 0; }
     .btn-submit { width: 100%; background: linear-gradient(135deg, var(--success), #1fa876); color: white; border: none; border-radius: var(--radius-sm); padding: 18px; font-size: 17px; font-weight: 600; cursor: pointer; }
 
-    /* TOAST & LOADING */
-    .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--success); color: white; border-radius: 50px; padding: 14px 24px; font-size: 15px; font-weight: 600; box-shadow: 0 8px 24px rgba(46,204,138,0.4); transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); z-index: 999; white-space: nowrap; }
-    .toast.show { transform: translateX(-50%) translateY(0); }
+    /* ════════════════════════════════════════════════════════════ */
+    /* TOAST — FIX: thêm opacity/visibility để giấu hoàn toàn khi   */
+    /* không có .show, tránh lòi cạnh dưới vì translateY không đủ.   */
+    /* ════════════════════════════════════════════════════════════ */
+    .toast {
+      position: fixed; bottom: 32px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      background: var(--success); color: white;
+      border-radius: 50px; padding: 14px 24px;
+      font-size: 15px; font-weight: 600;
+      box-shadow: 0 8px 24px rgba(46,204,138,0.4);
+      transition:
+        transform 0.3s cubic-bezier(0.34,1.56,0.64,1),
+        opacity 0.2s,
+        visibility 0.2s;
+      z-index: 999; white-space: nowrap;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
     .toast.error { background: var(--danger); }
+
+    /* LOADING */
     .loading-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(15,17,23,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
     .loading-overlay.show { display: flex; }
     .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
