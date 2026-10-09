@@ -101,6 +101,12 @@
     .invalid-hint { font-size: 14px; color: rgba(255,255,255,0.85); }
     .btn-continue { margin-top: 18px; width: 100%; max-width: 320px; background: white; color: #B71C1C; border: none; border-radius: 12px; padding: 18px; font-size: 18px; font-weight: 800; cursor: pointer; }
 
+    .dup-warn { position: absolute; inset: 0; z-index: 59; background: rgba(194,106,0,0.92); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px; text-align: center; }
+    .dup-warn.show { display: flex; }
+    .loading { position: fixed; inset: 0; z-index: 450; background: rgba(15,17,23,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+    .loading.show { display: flex; }
+    .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+
     /* TOAST */
     .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); opacity: 0; visibility: hidden; pointer-events: none; background: var(--success); color: white; border-radius: 50px; padding: 14px 24px; font-size: 15px; font-weight: 600; transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s, visibility 0.2s; z-index: 999; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
     .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
@@ -114,6 +120,7 @@
 <body>
 
 <div class="toast" id="toast"></div>
+<div class="loading" id="loading"><div class="spinner"></div><div style="color:var(--text2);font-size:14px;">Đang tải danh sách mã đã quét…</div></div>
 <div class="pending-badge" id="pendingBadge"><div class="dot"></div>Đang gửi <span id="pendingNum">0</span></div>
 
 <!-- HỘP THOẠI ĐẦU MÃ -->
@@ -152,18 +159,14 @@
     <div class="report" id="report">
       <div class="report-title">Báo cáo phiên quét</div>
       <div class="report-sub" id="repSub">—</div>
-      <div class="report-row"><span>✓ Hợp lệ (đã lưu)</span><b class="c-ok" id="repOk">0</b></div>
+      <div class="report-row"><span>✓ Hợp lệ (lưu)</span><b class="c-ok" id="repOk">0</b></div>
       <div class="report-row"><span>⟳ Trùng (không lưu)</span><b class="c-dup" id="repDup">0</b></div>
       <div class="report-row"><span>✕ Không hợp lệ</span><b class="c-bad" id="repBad">0</b></div>
       <div class="report-note" id="repNote"></div>
     </div>
     <button class="btn-scan" onclick="openPrefix()">📷 Bắt đầu phiên quét</button>
-    <div class="stats-row">
-      <div class="stat-card"><div class="stat-num c-ok" id="statOk">0</div><div class="stat-label">Đã lưu hôm nay</div></div>
-      <div class="stat-card"><div class="stat-num c-dup" id="statDup">0</div><div class="stat-label">Trùng hôm nay</div></div>
-    </div>
-    <div class="list-title">Quét gần đây</div>
-    <div class="list" id="recentList"></div>
+    <div class="list-title" id="listTitle" style="display:none">Chi tiết phiên quét</div>
+    <div class="list" id="sessionList" style="display:none"></div>
   </div>
 </div>
 
@@ -177,6 +180,11 @@
   </div>
   <div class="pill scan-last" id="scanLast" style="display:none"></div>
   <button class="btn-stop" onclick="stopSession()">■ Dừng</button>
+  <div class="dup-warn" id="dupPanel">
+    <div class="invalid-icon">⟳</div>
+    <div class="invalid-title">Đơn trùng — không lưu</div>
+    <div class="invalid-code" id="dupCode">—</div>
+  </div>
   <div class="invalid" id="invalidPanel">
     <div class="invalid-icon">⚠</div>
     <div class="invalid-title">Đơn này không hợp lệ</div>
@@ -193,7 +201,8 @@ const LIST_MAX = 100;
 let user = null;
 let html5Qr = null;
 let recent = [];      // [{code, ts, st: 'pending'|'ok'|'dup'|'err', sid, msg}] — hôm nay, mới nhất trước
-let session = null;   // {id, prefix, start, end, dupLocal, invalid, running}
+let session = null;   // {id, prefix, start, end, ok, dup, invalid, events:[{code,kind,ts}], running}
+let knownSet = new Set(); // mã đã có: sheet + hôm nay trên máy + trong phiên
 let invalidShown = false;
 
 function todayKey() { return 'qn_list_' + new Date().toDateString(); }
@@ -240,7 +249,6 @@ async function handleLogin(e) {
 }
 function enterApp() {
   document.getElementById('headerName').textContent = user.name + (user.code ? ' (' + user.code + ')' : '');
-  renderList();
   showScreen('homeScreen');
 }
 function handleLogout() {
@@ -258,21 +266,42 @@ function openPrefix() {
   setTimeout(() => { try { inp.focus(); inp.select(); } catch(e) {} }, 150);
 }
 function closePrefix() { document.getElementById('prefixModal').classList.remove('show'); }
-function confirmPrefix() {
+async function confirmPrefix() {
   const prefix = (document.getElementById('prefixInput').value || '').trim();
   try { localStorage.setItem('qn_prefix', prefix); } catch(e) {}
   closePrefix();
+  await loadKnown();
   startSession(prefix);
+}
+// Tải mọi mã đã có trên sheet để báo trùng ngay lúc quét (server vẫn chặn lại lần nữa khi lưu)
+async function loadKnown() {
+  knownSet = new Set(recent.filter(r => r.st !== 'err').map(r => r.code));
+  document.getElementById('loading').classList.add('show');
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'listScanCodes' }), signal: ctrl.signal });
+    clearTimeout(timer);
+    const json = await res.json();
+    if (json.status !== 'ok') throw new Error(json.message || 'lỗi');
+    (json.codes || []).forEach(c => knownSet.add(String(c).trim()));
+  } catch (e) {
+    showToast('Không tải được danh sách mã trên sheet — chỉ báo trùng mã quét trên máy này', true);
+  } finally {
+    document.getElementById('loading').classList.remove('show');
+  }
 }
 document.getElementById('prefixInput').addEventListener('keydown', e => { if (e.key === 'Enter') confirmPrefix(); });
 
 // ── PHIÊN QUÉT ──
 function startSession(prefix) {
-  session = { id: Date.now(), prefix, start: Date.now(), end: 0, dupLocal: 0, invalid: 0, running: true };
+  session = { id: Date.now(), prefix, start: Date.now(), end: 0, ok: 0, dup: 0, invalid: 0, events: [], running: true };
   document.getElementById('report').classList.remove('show');
+  document.getElementById('listTitle').style.display = 'none';
+  document.getElementById('sessionList').style.display = 'none';
   if (hasQuickNative()) {
     // Màn quét riêng của app (v1.3.7+): app tự kiểm đầu mã + trùng, gửi từng mã hợp lệ về qua onQuickCode
-    window.AndroidQuickScan.start(prefix, JSON.stringify(knownCodes()));
+    window.AndroidQuickScan.start(prefix, JSON.stringify(Array.from(knownSet)));
     return;
   }
   startWebScanner();
@@ -283,7 +312,10 @@ window.onQuickCode = function(code, ts) { addValid(String(code || '').trim(), ts
 window.onQuickScanDone = function(res) {
   res = res || {};
   (res.codes || []).forEach(c => addValid(String(c.code || '').trim(), c.ts || Date.now()));
-  if (session) { session.dupLocal = res.dup || 0; session.invalid = res.invalid || 0; }
+  if (session) {
+    session.ok = res.ok || 0; session.dup = res.dup || 0; session.invalid = res.invalid || 0;
+    session.events = res.events || [];
+  }
   endSession();
 };
 function endSession() {
@@ -292,7 +324,6 @@ function endSession() {
   showScreen('homeScreen');
   renderReport();
 }
-function knownCodes() { return recent.filter(r => r.st !== 'err').map(r => r.code); }
 function isKnown(code) { return recent.some(r => r.code === code && r.st !== 'err'); }
 function matchPrefix(code) { return !session.prefix || code.toUpperCase().startsWith(session.prefix.toUpperCase()); }
 
@@ -300,38 +331,56 @@ function matchPrefix(code) { return !session.prefix || code.toUpperCase().starts
 function addValid(code, ts) {
   if (!code || isKnown(code)) return false;
   recent.unshift({ code, ts, st: 'pending', sid: session ? session.id : 0 });
-  persistList(); renderList(); renderReport();
+  knownSet.add(code);
+  persistList(); renderReport();
   enqueueUpload({ action: 'addScan', maVanDon: code, ts, nhanVien: user ? user.name : '', maNhanVien: user ? user.code : '' });
   return true;
 }
 
 function renderReport() {
   if (!session || session.running) return;
-  const mine = recent.filter(r => r.sid === session.id);
-  const ok = mine.filter(r => r.st === 'ok' || r.st === 'pending').length;
-  const pending = mine.filter(r => r.st === 'pending').length;
-  const dupServer = mine.filter(r => r.st === 'dup').length;
-  const err = mine.filter(r => r.st === 'err').length;
-  document.getElementById('repOk').textContent = ok;
-  document.getElementById('repDup').textContent = session.dupLocal + dupServer;
+  document.getElementById('repOk').textContent = session.ok;
+  document.getElementById('repDup').textContent = session.dup;
   document.getElementById('repBad').textContent = session.invalid;
   document.getElementById('repSub').textContent =
     (session.prefix ? 'Đầu mã: ' + session.prefix : 'Mọi mã') + ' · ' + fmtTime(session.start) + ' → ' + fmtTime(session.end);
+  // Trạng thái gửi lên sheet của các mã hợp lệ trong phiên
+  const mine = recent.filter(r => r.sid === session.id);
+  const pending = mine.filter(r => r.st === 'pending').length;
+  const err = mine.filter(r => r.st === 'err').length;
   const notes = [];
-  if (pending) notes.push('⟳ Còn ' + pending + ' mã đang gửi lên sheet — số liệu tự cập nhật.');
-  if (err) notes.push('✕ ' + err + ' mã lưu lỗi, xem danh sách bên dưới.');
+  if (pending) notes.push('⟳ Còn ' + pending + ' mã đang gửi lên sheet.');
+  if (err) notes.push('✕ ' + err + ' mã gửi lỗi.');
   const note = document.getElementById('repNote');
   note.textContent = notes.join(' ');
   note.style.display = notes.length ? 'block' : 'none';
   document.getElementById('report').classList.add('show');
+  renderSessionList();
+}
+function renderSessionList() {
+  const box = document.getElementById('sessionList');
+  const title = document.getElementById('listTitle');
+  const ev = (session && session.events) || [];
+  if (!ev.length) { box.style.display = 'none'; title.style.display = 'none'; return; }
+  const kindTag = { ok: ['ok', '✓ Hợp lệ'], dup: ['dup', 'Trùng'], bad: ['err', '✕ Sai đầu mã'] };
+  const upTag = { pending: ' · đang gửi', ok: ' · đã lưu', dup: ' · sheet đã có', err: ' · gửi lỗi' };
+  box.innerHTML = ev.slice().reverse().slice(0, LIST_MAX).map(e => {
+    const t = kindTag[e.kind] || kindTag.ok;
+    let sub = fmtTime(e.ts);
+    if (e.kind === 'ok') { const r = recent.find(x => x.code === e.code && x.sid === session.id); if (r) sub += upTag[r.st] || ''; }
+    return '<div class="item"><div style="flex:1;min-width:0;"><div class="item-code">' + esc(e.code) + '</div>' +
+      '<div class="item-time">' + sub + '</div></div><span class="tag ' + t[0] + '">' + t[1] + '</span></div>';
+  }).join('');
+  box.style.display = 'block'; title.style.display = 'block';
 }
 
 // ── MÀN QUÉT WEB (trình duyệt, hoặc app cũ chưa có màn quét riêng) ──
-let lastCode = '', lastSeen = 0, okInSession = 0, dupInSession = 0;
+let lastCode = '', lastSeen = 0, dupTimer = null;
 function startWebScanner() {
-  okInSession = 0; dupInSession = 0; lastCode = ''; lastSeen = 0;
+  lastCode = ''; lastSeen = 0;
   invalidShown = false;
   document.getElementById('invalidPanel').classList.remove('show');
+  document.getElementById('dupPanel').classList.remove('show');
   document.getElementById('scanPrefix').textContent = session.prefix ? 'Đầu mã: ' + session.prefix : 'Mọi mã';
   document.getElementById('scanLast').style.display = 'none';
   updateScanCount();
@@ -358,6 +407,8 @@ function stopWebScanner() {
 }
 function stopSession() {
   if (!session || !session.running) return;
+  clearTimeout(dupTimer);
+  document.getElementById('dupPanel').classList.remove('show');
   stopWebScanner().then(endSession);
 }
 // App cũ: quét bằng màn Google — X / Back = Dừng
@@ -374,6 +425,8 @@ function onWebCode(code) {
 
   if (!matchPrefix(code)) {
     session.invalid++;
+    session.events.push({ code, kind: 'bad', ts: now });
+    updateScanCount();
     invalidShown = true;
     vibrate([400, 120, 400]);
     document.getElementById('invalidCode').textContent = code;
@@ -381,12 +434,27 @@ function onWebCode(code) {
     document.getElementById('invalidPanel').classList.add('show');
     return;
   }
-  if (isKnown(code)) {
-    // Trùng → không lưu, không báo, quét tiếp
-    session.dupLocal++; dupInSession++;
+  if (knownSet.has(code)) {
+    // Trùng → không lưu, cảnh báo 2s rồi tự quét tiếp
+    session.dup++;
+    session.events.push({ code, kind: 'dup', ts: now });
+    updateScanCount();
+    invalidShown = true;
+    vibrate([180, 100, 180]);
+    document.getElementById('dupCode').textContent = code;
+    document.getElementById('dupPanel').classList.add('show');
+    clearTimeout(dupTimer);
+    dupTimer = setTimeout(() => {
+      document.getElementById('dupPanel').classList.remove('show');
+      invalidShown = false;
+      lastSeen = Date.now();
+      if (session.running && hasGmsNative()) resumeWebCamera();
+    }, 2000);
+    return;
   } else {
     addValid(code, now);
-    okInSession++;
+    session.ok++;
+    session.events.push({ code, kind: 'ok', ts: now });
     vibrate([60]);
     const last = document.getElementById('scanLast');
     last.textContent = '✓ ' + code; last.style.display = 'block';
@@ -400,28 +468,16 @@ function continueScan() {
   document.getElementById('invalidPanel').classList.remove('show');
   if (hasGmsNative()) resumeWebCamera();
 }
-function updateScanCount() { document.getElementById('scanCount').textContent = '✓ ' + okInSession + ' · trùng ' + dupInSession; }
+function updateScanCount() { document.getElementById('scanCount').textContent = '✓ ' + session.ok + ' · trùng ' + session.dup + (session.invalid ? ' · sai ' + session.invalid : ''); }
 
 // ── DANH SÁCH / THỐNG KÊ ──
 function persistList() {
   if (recent.length > 3000) recent.length = 3000;
   try { localStorage.setItem(todayKey(), JSON.stringify(recent)); } catch(e) {}
 }
-function renderList() {
-  document.getElementById('statOk').textContent = recent.filter(r => r.st === 'ok' || r.st === 'pending').length;
-  document.getElementById('statDup').textContent = recent.filter(r => r.st === 'dup').length;
-  const box = document.getElementById('recentList');
-  if (!recent.length) { box.innerHTML = '<div class="list-empty">Chưa quét mã nào hôm nay</div>'; return; }
-  const label = { pending: 'Đang gửi', ok: '✓ Đã lưu', dup: 'Trùng', err: '✕ Lỗi' };
-  box.innerHTML = recent.slice(0, LIST_MAX).map(r =>
-    '<div class="item"><div style="flex:1;min-width:0;"><div class="item-code">' + esc(r.code) + '</div>' +
-    '<div class="item-time">' + fmtTime(r.ts) + (r.msg ? ' · ' + esc(r.msg) : '') + '</div></div>' +
-    '<span class="tag ' + r.st + '">' + label[r.st] + '</span></div>'
-  ).join('');
-}
 function setStatus(code, ts, st, msg) {
   const r = recent.find(x => x.code === code && x.ts === ts);
-  if (r) { r.st = st; r.msg = msg || ''; persistList(); renderList(); renderReport(); }
+  if (r) { r.st = st; r.msg = msg || ''; persistList(); renderReport(); }
 }
 
 // ── HÀNG ĐỢI GỬI NỀN ──
