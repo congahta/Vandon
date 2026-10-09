@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0F1117">
+  <title>Quét nhanh</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg: #0F1117; --surface: #1A1D27; --surface2: #22263A;
+      --accent: #4F8EF7; --accent2: #7C5CFC;
+      --success: #2ECC8A; --danger: #F75C5C; --warn: #F5A623;
+      --text: #F0F2FF; --text2: #8B92B8;
+      --border: #2A2F45; --radius: 16px; --radius-sm: 10px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+    .screen { display: none; min-height: 100vh; flex-direction: column; }
+    .screen.active { display: flex; }
+
+    /* LOGIN */
+    #loginScreen { align-items: center; justify-content: center; padding: 32px 24px; background: radial-gradient(ellipse at 50% 0%, #1e2a4a 0%, var(--bg) 60%); }
+    .login-logo { width: 72px; height: 72px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 24px; }
+    .login-title { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+    .login-sub { font-size: 14px; color: var(--text2); margin-bottom: 40px; }
+    .login-form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
+    .input-group { display: flex; flex-direction: column; gap: 6px; }
+    .input-group label { font-size: 13px; color: var(--text2); font-weight: 500; }
+    .input-field { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; font-size: 16px; color: var(--text); outline: none; }
+    .input-field:focus { border-color: var(--accent); }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; border: none; border-radius: var(--radius-sm); padding: 16px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    .btn-primary:disabled { opacity: 0.6; }
+    .login-error { color: var(--danger); font-size: 13px; text-align: center; display: none; }
+
+    /* HEADER */
+    .app-header { background: var(--surface); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+    .header-name { font-size: 16px; font-weight: 600; }
+    .header-greeting { font-size: 12px; color: var(--text2); }
+    .btn-logout { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+
+    /* HOME */
+    .home-body { flex: 1; padding: 20px 20px 90px; display: flex; flex-direction: column; gap: 14px; }
+    .stats-row { display: flex; gap: 12px; }
+    .stat-card { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
+    .stat-num { font-size: 24px; font-weight: 700; }
+    .stat-label { font-size: 11px; color: var(--text2); margin-top: 2px; }
+    .stat-ok { color: var(--success); } .stat-dup { color: var(--danger); }
+    .btn-scan { padding: 26px 20px; border-radius: var(--radius); border: none; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; font-size: 19px; font-weight: 700; cursor: pointer; box-shadow: 0 8px 24px rgba(79,142,247,0.3); }
+    .btn-secondary { padding: 16px; border-radius: var(--radius-sm); border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; }
+    .alert { display: none; border-radius: var(--radius); padding: 16px; border: 1.5px solid var(--danger); background: rgba(247,92,92,0.12); }
+    .alert.show { display: block; }
+    .alert-title { font-size: 16px; font-weight: 700; color: var(--danger); margin-bottom: 4px; }
+    .alert-code { font-family: monospace; font-size: 18px; font-weight: 700; word-break: break-all; }
+    .alert-sub { font-size: 13px; color: var(--text2); margin-top: 4px; }
+    .list-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
+    .list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .list-empty { color: var(--text2); font-size: 14px; text-align: center; padding: 20px; }
+    .item { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .item:last-child { border-bottom: none; }
+    .item-code { flex: 1; font-family: monospace; font-size: 15px; font-weight: 600; word-break: break-all; }
+    .item-time { font-size: 12px; color: var(--text2); }
+    .tag { border-radius: 50px; padding: 4px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid var(--border); color: var(--text2); }
+    .tag.ok { border-color: var(--success); color: var(--success); }
+    .tag.dup, .tag.err { border-color: var(--danger); color: var(--danger); }
+
+    /* SCANNER (trình duyệt) */
+    #scannerScreen { background: #000; position: fixed; inset: 0; z-index: 50; }
+    #scannerScreen.screen.active { display: block; }
+    #qr-reader { width: 100% !important; height: 100% !important; }
+    #qr-reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; }
+    #qr-reader__dashboard { display: none !important; }
+    .scanner-ui { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+    .scanner-frame { width: 260px; height: 160px; border: 2.5px solid var(--accent); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.55); }
+    .scanner-hint { color: white; font-size: 14px; margin-top: 20px; }
+    .scanner-tag { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.55); color: white; border-radius: 50px; padding: 8px 18px; font-size: 13px; white-space: nowrap; pointer-events: none; }
+    .btn-cancel { position: absolute; bottom: max(48px, calc(24px + env(safe-area-inset-bottom))); left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: white; border-radius: 50px; padding: 14px 36px; font-size: 16px; cursor: pointer; z-index: 51; }
+
+    /* NHẬP TAY */
+    .manual-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(15,17,23,0.88); display: none; align-items: center; justify-content: center; padding: 24px; }
+    .manual-overlay.show { display: flex; }
+    .manual-box { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .manual-title { font-size: 17px; font-weight: 700; }
+    .manual-btns { display: flex; gap: 10px; }
+    .manual-btns button { flex: 1; padding: 14px; border-radius: var(--radius-sm); font-size: 15px; font-weight: 600; cursor: pointer; border: none; }
+    .manual-cancel { background: var(--surface2); border: 1px solid var(--border) !important; color: var(--text2); }
+    .manual-ok { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; }
+
+    /* TOAST — opacity/visibility để không lòi cạnh dưới */
+    .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); opacity: 0; visibility: hidden; pointer-events: none; background: var(--success); color: white; border-radius: 50px; padding: 14px 24px; font-size: 15px; font-weight: 600; transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s, visibility 0.2s; z-index: 999; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
+    .toast.error { background: var(--danger); }
+
+    .pending-badge { position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); left: 12px; z-index: 300; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 50px; padding: 8px 14px; font-size: 12px; font-weight: 600; display: none; align-items: center; gap: 8px; }
+    .pending-badge .dot { width: 12px; height: 12px; border: 2px solid var(--text2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+<div class="pending-badge" id="pendingBadge"><div class="dot"></div>Đang gửi <span id="pendingNum">0</span></div>
+<div class="manual-overlay" id="manualOverlay">
+  <div class="manual-box">
+    <div class="manual-title">Nhập mã vận đơn</div>
+    <input class="input-field" id="manualInput" type="text" placeholder="Gõ mã vận đơn..." autocomplete="off">
+    <div class="manual-btns">
+      <button class="manual-cancel" onclick="closeManual()">Huỷ</button>
+      <button class="manual-ok" onclick="confirmManual()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div class="screen active" id="loginScreen">
+  <div class="login-logo">📋</div>
+  <div class="login-title">Quét nhanh</div>
+  <div class="login-sub">Đăng nhập để tiếp tục</div>
+  <form class="login-form" onsubmit="handleLogin(event)">
+    <div class="input-group"><label>Tài khoản</label><input class="input-field" id="inputUser" type="text" autocomplete="username" placeholder="Tài khoản" required></div>
+    <div class="input-group"><label>Mật khẩu</label><input class="input-field" id="inputPass" type="password" autocomplete="current-password" placeholder="Mật khẩu" required></div>
+    <div class="login-error" id="loginError">Sai tài khoản hoặc mật khẩu</div>
+    <button class="btn-primary" id="loginBtn" type="submit">Đăng nhập</button>
+  </form>
+</div>
+
+<!-- HOME -->
+<div class="screen" id="homeScreen">
+  <div class="app-header">
+    <div><div class="header-greeting">Quét nhanh (không ảnh)</div><div class="header-name" id="headerName">—</div></div>
+    <button class="btn-logout" onclick="handleLogout()">Đăng xuất</button>
+  </div>
+  <div class="home-body">
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-num stat-ok" id="statOk">0</div><div class="stat-label">Đã lưu hôm nay</div></div>
+      <div class="stat-card"><div class="stat-num stat-dup" id="statDup">0</div><div class="stat-label">Trùng</div></div>
+    </div>
+    <div class="alert" id="dupAlert">
+      <div class="alert-title">⚠ Mã đã quét rồi — không lưu</div>
+      <div class="alert-code" id="dupCode">—</div>
+      <div class="alert-sub" id="dupSub"></div>
+    </div>
+    <button class="btn-scan" onclick="startScan()">📷 Bắt đầu quét</button>
+    <button class="btn-secondary" onclick="openManual()">⌨ Nhập mã bằng tay</button>
+    <div class="list-title">Quét gần đây</div>
+    <div class="list" id="recentList"></div>
+  </div>
+</div>
+
+<!-- SCANNER (chỉ dùng khi chạy trên trình duyệt) -->
+<div class="screen" id="scannerScreen">
+  <div id="qr-reader"></div>
+  <div class="scanner-ui">
+    <div class="scanner-frame"></div>
+    <div class="scanner-hint">Đưa mã vào khung để quét</div>
+  </div>
+  <div class="scanner-tag" id="scannerTag">Quét nhanh</div>
+  <button class="btn-cancel" onclick="cancelScan()">✕ Xong</button>
+</div>
+
+<script>
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJaJFbmzUlvtTcxB0NmGOOv7PFTUPMLtZzrG4qUhKqy3pz4KnptZKUnHbb6DBwwDRwZA/exec';
+const LIST_MAX = 100;
+
+let user = null;
+let html5Qr = null;
+let scanning = false;   // đang trong vòng quét liên tục
+let recent = [];        // [{code, ts, st: 'pending'|'ok'|'dup'|'err', msg}] — hôm nay, mới nhất trước
+
+function todayKey() { return 'qn_list_' + new Date().toDateString(); }
+function hasNative() { return !!(window.AndroidScanner && window.AndroidScanner.scanBarcode); }
+
+// ── INIT ──
+window.addEventListener('load', () => {
+  try { recent = JSON.parse(localStorage.getItem(todayKey()) || '[]'); } catch(e) { recent = []; }
+  const saved = localStorage.getItem('vd_user');
+  if (saved) { try { user = JSON.parse(saved); } catch(e) { user = null; } }
+  if (user) enterApp();
+  updatePending();
+  processQueue();
+});
+
+// ── LOGIN ──
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('inputUser').value.trim();
+  const password = document.getElementById('inputPass').value.trim();
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'Đang kiểm tra...';
+  try {
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'login', username, password }) });
+    const json = await res.json();
+    if (json.status === 'ok') {
+      user = { username: json.username, name: json.nhanVien, code: json.maNhanVien };
+      localStorage.setItem('vd_user', JSON.stringify(user));
+      document.getElementById('inputPass').value = '';
+      enterApp();
+    } else {
+      errEl.textContent = json.message || 'Sai tài khoản hoặc mật khẩu';
+      errEl.style.display = 'block';
+    }
+  } catch (err) {
+    errEl.textContent = 'Lỗi kết nối, thử lại';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Đăng nhập';
+  }
+}
+function enterApp() {
+  document.getElementById('headerName').textContent = user.name + (user.code ? ' (' + user.code + ')' : '');
+  renderList();
+  showScreen('homeScreen');
+}
+function handleLogout() {
+  localStorage.removeItem('vd_user'); user = null;
+  stopWebScanner(); scanning = false;
+  showScreen('loginScreen');
+}
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+
+// ── QUÉT LIÊN TỤC ──
+function startScan() {
+  hideDup();
+  scanning = true;
+  if (hasNative()) { window.AndroidScanner.scanBarcode(); return; }
+  showScreen('scannerScreen');
+  stopWebScanner().then(() => {
+    html5Qr = new Html5Qrcode('qr-reader');
+    html5Qr.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 260, height: 160 } },
+      onCode,
+      () => {}
+    ).catch(err => { scanning = false; showToast('Lỗi camera: ' + err, true); showScreen('homeScreen'); });
+  });
+}
+function stopWebScanner() {
+  return new Promise(resolve => {
+    if (!html5Qr) return resolve();
+    const q = html5Qr; html5Qr = null;
+    q.stop().catch(() => {}).finally(resolve);
+  });
+}
+function cancelScan() {
+  scanning = false;
+  stopWebScanner().then(() => showScreen('homeScreen'));
+}
+// Cầu nối Android (ML Kit)
+window.onNativeScan = function(code) { onCode(code); };
+window.onNativeScanCancel = function() { scanning = false; showScreen('homeScreen'); };
+
+let lastCode = '', lastAt = 0;
+function onCode(code) {
+  code = String(code || '').trim();
+  if (!code) return;
+  // html5-qrcode bắn liên tục cùng 1 mã → bỏ qua lần lặp trong 2.5s
+  const now = Date.now();
+  if (code === lastCode && now - lastAt < 2500) return;
+  lastCode = code; lastAt = now;
+
+  const ok = saveCode(code);
+  if (!ok) {
+    // Trùng (ngay trên máy) → dừng vòng quét để người dùng thấy cảnh báo
+    scanning = false;
+    stopWebScanner().then(() => showScreen('homeScreen'));
+    return;
+  }
+  if (hasNative()) { setTimeout(() => { if (scanning) window.AndroidScanner.scanBarcode(); }, 400); }
+  else { document.getElementById('scannerTag').textContent = '✓ ' + code; }
+}
+
+// Trả false nếu trùng mã đã quét hôm nay trên máy này
+function saveCode(code) {
+  const prev = recent.find(r => r.code === code && (r.st === 'ok' || r.st === 'pending'));
+  if (prev) {
+    vibrate([300, 100, 300, 100, 300]);
+    recordDup(code, 'Đã quét lúc ' + fmtTime(prev.ts) + ' trên máy này');
+    return false;
+  }
+  vibrate([80]);
+  const ts = Date.now();
+  recent.unshift({ code, ts, st: 'pending' });
+  persistList(); renderList();
+  enqueueUpload({ action: 'addScan', maVanDon: code, ts, nhanVien: user ? user.name : '', maNhanVien: user ? user.code : '' });
+  showToast('✓ ' + code);
+  return true;
+}
+
+// ── NHẬP TAY ──
+function openManual() {
+  const inp = document.getElementById('manualInput');
+  inp.value = '';
+  document.getElementById('manualOverlay').classList.add('show');
+  setTimeout(() => { try { inp.focus(); } catch(e) {} }, 150);
+}
+function closeManual() { document.getElementById('manualOverlay').classList.remove('show'); }
+function confirmManual() {
+  const code = (document.getElementById('manualInput').value || '').trim();
+  if (!code) { showToast('Nhập mã trước đã', true); return; }
+  closeManual();
+  hideDup();
+  saveCode(code);
+}
+
+// ── DANH SÁCH / THỐNG KÊ ──
+function persistList() {
+  if (recent.length > 2000) recent.length = 2000;
+  try { localStorage.setItem(todayKey(), JSON.stringify(recent)); } catch(e) {}
+}
+function recordDup(code, sub) {
+  document.getElementById('dupCode').textContent = code;
+  document.getElementById('dupSub').textContent = sub || '';
+  document.getElementById('dupAlert').classList.add('show');
+  recent.unshift({ code, ts: Date.now(), st: 'dup', msg: sub });
+  persistList(); renderList();
+  showToast('⚠ Trùng: ' + code, true);
+}
+function hideDup() { document.getElementById('dupAlert').classList.remove('show'); }
+function renderList() {
+  document.getElementById('statOk').textContent = recent.filter(r => r.st === 'ok' || r.st === 'pending').length;
+  document.getElementById('statDup').textContent = recent.filter(r => r.st === 'dup').length;
+  const box = document.getElementById('recentList');
+  if (!recent.length) { box.innerHTML = '<div class="list-empty">Chưa quét mã nào hôm nay</div>'; return; }
+  const label = { pending: 'Đang gửi', ok: '✓ Đã lưu', dup: '⚠ Trùng', err: '✕ Lỗi' };
+  box.innerHTML = recent.slice(0, LIST_MAX).map(r =>
+    '<div class="item"><div style="flex:1;min-width:0;"><div class="item-code">' + esc(r.code) + '</div>' +
+    '<div class="item-time">' + fmtTime(r.ts) + (r.msg ? ' · ' + esc(r.msg) : '') + '</div></div>' +
+    '<span class="tag ' + r.st + '">' + label[r.st] + '</span></div>'
+  ).join('');
+}
+function setStatus(code, ts, st, msg) {
+  const r = recent.find(x => x.code === code && x.ts === ts);
+  if (r) { r.st = st; r.msg = msg || ''; persistList(); renderList(); }
+}
+
+// ── HÀNG ĐỢI GỬI NỀN ──
+let uploadQueue = [];
+let uploading = false;
+try { uploadQueue = JSON.parse(localStorage.getItem('qn_queue') || '[]'); } catch(e) { uploadQueue = []; }
+function persistQueue() { try { localStorage.setItem('qn_queue', JSON.stringify(uploadQueue)); } catch(e) {} }
+function updatePending() {
+  const n = uploadQueue.length;
+  const badge = document.getElementById('pendingBadge');
+  if (n > 0) { badge.style.display = 'flex'; document.getElementById('pendingNum').textContent = n; }
+  else badge.style.display = 'none';
+}
+function enqueueUpload(payload) { uploadQueue.push(payload); persistQueue(); updatePending(); processQueue(); }
+async function processQueue() {
+  if (uploading || uploadQueue.length === 0) return;
+  uploading = true;
+  const item = uploadQueue[0];
+  try {
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(item) });
+    const json = await res.json();
+    uploadQueue.shift();
+    if (json.status === 'ok') {
+      setStatus(item.maVanDon, item.ts, 'ok');
+    } else if (json.status === 'duplicate') {
+      // Trùng trên sheet (máy khác / hôm trước đã quét) → báo dù đang ở vòng quét
+      vibrate([300, 100, 300, 100, 300]);
+      setStatus(item.maVanDon, item.ts, 'dup', 'Sheet đã có' + (json.thoiGian ? ' lúc ' + json.thoiGian : ''));
+      document.getElementById('dupCode').textContent = item.maVanDon;
+      document.getElementById('dupSub').textContent = 'Sheet đã có' + (json.thoiGian ? ' lúc ' + json.thoiGian : '');
+      document.getElementById('dupAlert').classList.add('show');
+      showToast('⚠ Trùng: ' + item.maVanDon, true);
+    } else {
+      setStatus(item.maVanDon, item.ts, 'err', json.message || '');
+      showToast('Lưu lỗi ' + item.maVanDon + ': ' + (json.message || ''), true);
+    }
+    persistQueue(); updatePending();
+    uploading = false;
+    processQueue();
+  } catch(err) {
+    uploading = false;
+    setTimeout(processQueue, 5000); // lỗi mạng → thử lại
+  }
+}
+
+// ── UTILS ──
+function fmtTime(ts) { const d = new Date(ts); return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch(e) {} }
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '') + ' show';
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>
