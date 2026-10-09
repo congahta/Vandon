@@ -103,9 +103,6 @@
 
     .dup-warn { position: absolute; inset: 0; z-index: 59; background: rgba(194,106,0,0.92); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px; text-align: center; }
     .dup-warn.show { display: flex; }
-    .loading { position: fixed; inset: 0; z-index: 450; background: rgba(15,17,23,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
-    .loading.show { display: flex; }
-    .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 
     /* TOAST */
     .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); opacity: 0; visibility: hidden; pointer-events: none; background: var(--success); color: white; border-radius: 50px; padding: 14px 24px; font-size: 15px; font-weight: 600; transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s, visibility 0.2s; z-index: 999; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
@@ -120,7 +117,6 @@
 <body>
 
 <div class="toast" id="toast"></div>
-<div class="loading" id="loading"><div class="spinner"></div><div style="color:var(--text2);font-size:14px;">Đang tải danh sách mã đã quét…</div></div>
 <div class="pending-badge" id="pendingBadge"><div class="dot"></div>Đang gửi <span id="pendingNum">0</span></div>
 
 <!-- HỘP THOẠI ĐẦU MÃ -->
@@ -201,8 +197,8 @@ const LIST_MAX = 100;
 let user = null;
 let html5Qr = null;
 let recent = [];      // [{code, ts, st: 'pending'|'ok'|'dup'|'err', sid, msg}] — hôm nay, mới nhất trước
-let session = null;   // {id, prefix, start, end, ok, dup, invalid, events:[{code,kind,ts}], running}
-let knownSet = new Set(); // mã đã có: sheet + hôm nay trên máy + trong phiên
+let session = null;   // {id, key, prefix, start, end, ok, dup, invalid, events:[{code,kind,ts}], label, running}
+let knownSet = new Set(); // mã đã quét trong phiên hiện tại (trùng chỉ tính trong phiên)
 let invalidShown = false;
 
 function todayKey() { return 'qn_list_' + new Date().toDateString(); }
@@ -266,42 +262,32 @@ function openPrefix() {
   setTimeout(() => { try { inp.focus(); inp.select(); } catch(e) {} }, 150);
 }
 function closePrefix() { document.getElementById('prefixModal').classList.remove('show'); }
-async function confirmPrefix() {
+function confirmPrefix() {
   const prefix = (document.getElementById('prefixInput').value || '').trim();
   try { localStorage.setItem('qn_prefix', prefix); } catch(e) {}
   closePrefix();
-  await loadKnown();
   startSession(prefix);
 }
-// Tải mọi mã đã có trên sheet để báo trùng ngay lúc quét (server vẫn chặn lại lần nữa khi lưu)
-async function loadKnown() {
-  knownSet = new Set(recent.filter(r => r.st !== 'err').map(r => r.code));
-  document.getElementById('loading').classList.add('show');
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 20000);
-    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'listScanCodes' }), signal: ctrl.signal });
-    clearTimeout(timer);
-    const json = await res.json();
-    if (json.status !== 'ok') throw new Error(json.message || 'lỗi');
-    (json.codes || []).forEach(c => knownSet.add(String(c).trim()));
-  } catch (e) {
-    showToast('Không tải được danh sách mã trên sheet — chỉ báo trùng mã quét trên máy này', true);
-  } finally {
-    document.getElementById('loading').classList.remove('show');
-  }
+// Mã máy (ngẫu nhiên, cố định) — ghép với giờ bắt đầu thành sessKey để server đánh số phiên
+function deviceId() {
+  let id = '';
+  try { id = localStorage.getItem('qn_device') || ''; } catch(e) {}
+  if (!id) { id = Math.random().toString(36).slice(2, 10); try { localStorage.setItem('qn_device', id); } catch(e) {} }
+  return id;
 }
 document.getElementById('prefixInput').addEventListener('keydown', e => { if (e.key === 'Enter') confirmPrefix(); });
 
 // ── PHIÊN QUÉT ──
 function startSession(prefix) {
-  session = { id: Date.now(), prefix, start: Date.now(), end: 0, ok: 0, dup: 0, invalid: 0, events: [], running: true };
+  const now = Date.now();
+  session = { id: now, key: deviceId() + '-' + now, prefix, start: now, end: 0, ok: 0, dup: 0, invalid: 0, events: [], label: '', running: true };
+  knownSet = new Set();
   document.getElementById('report').classList.remove('show');
   document.getElementById('listTitle').style.display = 'none';
   document.getElementById('sessionList').style.display = 'none';
   if (hasQuickNative()) {
     // Màn quét riêng của app (v1.3.7+): app tự kiểm đầu mã + trùng, gửi từng mã hợp lệ về qua onQuickCode
-    window.AndroidQuickScan.start(prefix, JSON.stringify(Array.from(knownSet)));
+    window.AndroidQuickScan.start(prefix, '[]');
     return;
   }
   startWebScanner();
@@ -324,16 +310,18 @@ function endSession() {
   showScreen('homeScreen');
   renderReport();
 }
-function isKnown(code) { return recent.some(r => r.code === code && r.st !== 'err'); }
 function matchPrefix(code) { return !session.prefix || code.toUpperCase().startsWith(session.prefix.toUpperCase()); }
 
 // Thêm mã hợp lệ → lưu nền. Bỏ qua nếu đã có (gọi lặp từ app không sao)
 function addValid(code, ts) {
-  if (!code || isKnown(code)) return false;
-  recent.unshift({ code, ts, st: 'pending', sid: session ? session.id : 0 });
+  const sid = session ? session.id : 0;
+  if (!code || recent.some(r => r.code === code && r.sid === sid)) return false;
+  recent.unshift({ code, ts, st: 'pending', sid });
   knownSet.add(code);
   persistList(); renderReport();
-  enqueueUpload({ action: 'addScan', maVanDon: code, ts, nhanVien: user ? user.name : '', maNhanVien: user ? user.code : '' });
+  enqueueUpload({ action: 'addScan', maVanDon: code, ts, sid,
+    sessKey: session ? session.key : '', sessStart: session ? session.start : ts,
+    nhanVien: user ? user.name : '', maNhanVien: user ? user.code : '' });
   return true;
 }
 
@@ -342,7 +330,7 @@ function renderReport() {
   document.getElementById('repOk').textContent = session.ok;
   document.getElementById('repDup').textContent = session.dup;
   document.getElementById('repBad').textContent = session.invalid;
-  document.getElementById('repSub').textContent =
+  document.getElementById('repSub').textContent = (session.label ? session.label + ' · ' : '') +
     (session.prefix ? 'Đầu mã: ' + session.prefix : 'Mọi mã') + ' · ' + fmtTime(session.start) + ' → ' + fmtTime(session.end);
   // Trạng thái gửi lên sheet của các mã hợp lệ trong phiên
   const mine = recent.filter(r => r.sid === session.id);
@@ -363,7 +351,7 @@ function renderSessionList() {
   const ev = (session && session.events) || [];
   if (!ev.length) { box.style.display = 'none'; title.style.display = 'none'; return; }
   const kindTag = { ok: ['ok', '✓ Hợp lệ'], dup: ['dup', 'Trùng'], bad: ['err', '✕ Sai đầu mã'] };
-  const upTag = { pending: ' · đang gửi', ok: ' · đã lưu', dup: ' · sheet đã có', err: ' · gửi lỗi' };
+  const upTag = { pending: ' · đang gửi', ok: ' · đã lưu', err: ' · gửi lỗi' };
   box.innerHTML = ev.slice().reverse().slice(0, LIST_MAX).map(e => {
     const t = kindTag[e.kind] || kindTag.ok;
     let sub = fmtTime(e.ts);
@@ -500,11 +488,12 @@ async function processQueue() {
     const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(item) });
     const json = await res.json();
     uploadQueue.shift();
+    if (json.phien && session && item.sid === session.id) session.label = json.phien;
     if (json.status === 'ok') {
       setStatus(item.maVanDon, item.ts, 'ok');
     } else if (json.status === 'duplicate') {
-      // Sheet đã có (máy khác / hôm trước) → không lưu, không báo
-      setStatus(item.maVanDon, item.ts, 'dup', 'Sheet đã có' + (json.thoiGian ? ' lúc ' + json.thoiGian : ''));
+      // Cùng phiên đã lưu rồi (gửi lại do mạng chập chờn) → coi như đã lưu
+      setStatus(item.maVanDon, item.ts, 'ok');
     } else {
       setStatus(item.maVanDon, item.ts, 'err', json.message || '');
       showToast('Lưu lỗi ' + item.maVanDon + ': ' + (json.message || ''), true);
