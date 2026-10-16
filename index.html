@@ -348,6 +348,7 @@
   </div>
 </div>
 
+<script src="hangdoi.js"></script>
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJaJFbmzUlvtTcxB0NmGOOv7PFTUPMLtZzrG4qUhKqy3pz4KnptZKUnHbb6DBwwDRwZA/exec';
 
@@ -372,8 +373,7 @@ window.addEventListener('load', () => {
   const saved = localStorage.getItem('vd_user');
   if (saved) { state.user = JSON.parse(saved); enterApp(); }
   loadStats();
-  updatePending();
-  processQueue(); // tiếp tục gửi những đơn còn tồn từ phiên trước
+  khoiDongHangDoi(); // tiếp tục gửi những đơn còn tồn từ phiên trước
 });
 
 // ── LOGIN (đối chiếu qua Google Sheet) ──
@@ -746,7 +746,9 @@ function handleSubmit() {
     ghiChu: document.getElementById('inputGhiChu').value,
     nhanVien: state.user.name,
     maNhanVien: state.user.code,
-    thoiGian: new Date().toLocaleString('vi-VN')
+    thoiGian: new Date().toLocaleString('vi-VN'),
+    ts: Date.now(),
+    reqId: 'v2:' + maMay() + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 8)
   };
   enqueueUpload(payload);
   // Cập nhật thống kê lạc quan + mở scanner ngay, KHÔNG chờ lưu xong
@@ -757,49 +759,40 @@ function handleSubmit() {
   setTimeout(() => startScan(), 300);
 }
 
-// ── HÀNG ĐỢI UPLOAD (lưu tạm → gửi nền tuần tự) ──
-let uploadQueue = [];
-let uploading = false;
-try { uploadQueue = JSON.parse(localStorage.getItem('vd_queue') || '[]'); } catch(e) { uploadQueue = []; }
-
-function persistQueue() {
-  try { localStorage.setItem('vd_queue', JSON.stringify(uploadQueue)); }
-  catch(e) { /* vượt dung lượng localStorage — giữ trong bộ nhớ */ }
+// ── HÀNG ĐỢI GỬI (hangdoi.js) — chỉ xoá đơn khi máy chủ báo đã lưu, lỗi thì thử lại mãi ──
+function maMay() {
+  let id = '';
+  try { id = localStorage.getItem('qn_device') || ''; } catch(e) {}
+  if (!id) { id = Math.random().toString(36).slice(2, 10); try { localStorage.setItem('qn_device', id); } catch(e) {} }
+  return id;
 }
-function updatePending() {
-  const n = uploadQueue.length;
+function updatePending(n) {
   const badge = document.getElementById('pendingBadge');
   if (!badge) return;
   if (n > 0) { badge.style.display = 'flex'; document.getElementById('pendingNum').textContent = n; }
   else { badge.style.display = 'none'; }
 }
-function enqueueUpload(payload) {
-  uploadQueue.push(payload);
-  persistQueue();
-  updatePending();
-  processQueue();
+function khoiDongHangDoi() {
+  HangDoi.init({
+    url: SCRIPT_URL,
+    onCount: updatePending,
+    onSent: (reqId, st, info, item) => { if (st === 'err') showToast('Đơn ' + ((item && item.maVanDon) || '') + ' bị từ chối: ' + info, true); }
+  });
+  // Đơn còn trong hàng đợi kiểu cũ (localStorage vd_queue) → chuyển sang hàng đợi mới, mã yêu cầu theo kiểu cũ
+  // (giống máy chủ tự dựng) để nếu bản cũ đã ghi rồi thì máy chủ nhận ra, không ghi trùng.
+  let cu = [];
+  try { cu = JSON.parse(localStorage.getItem('vd_queue') || '[]'); } catch(e) { cu = []; }
+  if (!cu.length) return;
+  Promise.all(cu.map(p => HangDoi.them(Object.assign({}, p, {
+    reqId: p.reqId || ('v:' + String(p.maVanDon || '').trim() + '|' + (p.thoiGian || '') + '|' + (p.maNhanVien || ''))
+  })))).then(() => { try { localStorage.removeItem('vd_queue'); } catch(e) {} })
+    .catch(e => showToast('Lỗi chuyển hàng đợi cũ: ' + e, true));
 }
-async function processQueue() {
-  if (uploading || uploadQueue.length === 0) return;
-  uploading = true;
-  const item = uploadQueue[0];
-  try {
-    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(item) });
-    const json = await res.json();
-    uploading = false;
-    if (json.status === 'ok') {
-      uploadQueue.shift();
-    } else {
-      uploadQueue.shift();
-      showToast('Lưu lỗi ' + (item.maVanDon || '') + ': ' + (json.message || ''), true);
-    }
-    persistQueue();
-    updatePending();
-    processQueue();
-  } catch(err) {
-    uploading = false;
-    setTimeout(processQueue, 5000);
-  }
+function enqueueUpload(payload) {
+  HangDoi.them(payload).catch(e => {
+    // Không lưu được trên máy (cực hiếm) → báo to để quét lại
+    showToast('⚠ KHÔNG LƯU ĐƯỢC đơn ' + payload.maVanDon + ' — quét lại! (' + e + ')', true);
+  });
 }
 
 // ── UTILS ──
