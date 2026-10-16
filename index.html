@@ -757,9 +757,13 @@ function handleSubmit() {
   setTimeout(() => startScan(), 300);
 }
 
-// ── HÀNG ĐỢI UPLOAD (lưu tạm → gửi nền tuần tự) ──
+// ── HÀNG ĐỢI UPLOAD (lưu tạm → gửi nền, SONG SONG tối đa GUI_SONG_SONG đơn) ──
+// Mỗi đơn mất vài giây ở máy chủ (mở file sheet nặng + đưa ảnh lên Drive) → gửi 2 đơn cùng lúc cho hàng đợi
+// vơi nhanh hơn. Máy chủ có khoá khi ghi dòng nên 2 đơn không trùng dòng.
+const GUI_SONG_SONG = 2;
 let uploadQueue = [];
-let uploading = false;
+const dangGui = new Set();   // đơn đang gửi (không lưu vào localStorage)
+let choThuLai = 0;           // lỗi mạng → không gửi lại trước thời điểm này
 try { uploadQueue = JSON.parse(localStorage.getItem('vd_queue') || '[]'); } catch(e) { uploadQueue = []; }
 
 function persistQueue() {
@@ -779,26 +783,31 @@ function enqueueUpload(payload) {
   updatePending();
   processQueue();
 }
-async function processQueue() {
-  if (uploading || uploadQueue.length === 0) return;
-  uploading = true;
-  const item = uploadQueue[0];
+function processQueue() {
+  if (Date.now() < choThuLai) return;
+  while (dangGui.size < GUI_SONG_SONG) {
+    const item = uploadQueue.find(it => !dangGui.has(it));
+    if (!item) return;
+    guiMotDon(item);
+  }
+}
+async function guiMotDon(item) {
+  dangGui.add(item);
   try {
     const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(item) });
     const json = await res.json();
-    uploading = false;
-    if (json.status === 'ok') {
-      uploadQueue.shift();
-    } else {
-      uploadQueue.shift();
-      showToast('Lưu lỗi ' + (item.maVanDon || '') + ': ' + (json.message || ''), true);
-    }
+    const i = uploadQueue.indexOf(item);
+    if (i >= 0) uploadQueue.splice(i, 1);
+    if (json.status !== 'ok') showToast('Lưu lỗi ' + (item.maVanDon || '') + ': ' + (json.message || ''), true);
     persistQueue();
     updatePending();
-    processQueue();
   } catch(err) {
-    uploading = false;
+    // lỗi mạng → giữ đơn trong hàng đợi, 5 giây sau gửi lại
+    choThuLai = Date.now() + 5000;
     setTimeout(processQueue, 5000);
+  } finally {
+    dangGui.delete(item);
+    processQueue();
   }
 }
 
