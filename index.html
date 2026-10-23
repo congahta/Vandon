@@ -170,6 +170,9 @@
     .lookup-empty { color: var(--text2); font-size: 14px; text-align: center; padding: 20px; }
     .lookup-time { font-size: 14px; color: var(--text); }
     .lookup-img { width: 100%; border-radius: var(--radius-sm); margin-top: 4px; display: block; }
+    .lookup-row { font-size: 14px; padding: 3px 0; word-break: break-all; }
+    .lookup-links { display: flex; gap: 10px; flex-wrap: wrap; padding: 8px 0; }
+    .lookup-link { color: var(--accent); font-size: 14px; font-weight: 600; text-decoration: none; border: 1px solid var(--accent); border-radius: 50px; padding: 6px 12px; }
 
     /* PENDING BADGE (hang doi luu nen) */
     .pending-badge { position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); left: 12px; z-index: 300; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 50px; padding: 8px 14px; font-size: 12px; font-weight: 600; display: none; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
@@ -432,10 +435,15 @@ function updateStats() { const ok = document.getElementById('statOk'); if (!ok) 
 function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 
 // ── BƯỚC CHỌN PHÂN LOẠI ──
+// Quét hoàn 1 bước (người dùng chốt 23/10/2026): chỉ chọn Nguồn → quét → chụp → lưu "Bình thường".
+// Không chọn Ảo/Không ảo, loại vấn đề ở bước này. Đơn có vấn đề → quay video bóc, chọn Ảo/Không ảo + loại lúc lưu video
+// → ghi đè Tình trạng / Loại vấn đề của lần quét gần nhất. (Màn aoScreen / loaiScreen giữ lại nhưng không dùng nữa.)
+const LOAI_MAC_DINH = 'Bình thường';
 function selectNguon(val) {
   state.nguonHoan = val;
-  document.getElementById('crumbAo').textContent = val;
-  showScreen('aoScreen');
+  state.tinhTrang = '';
+  state.loaiVanDe = LOAI_MAC_DINH;
+  startScan();
 }
 function selectAo(val) {
   state.tinhTrang = val;
@@ -536,19 +544,26 @@ function renderLookup(json) {
   const box = document.getElementById('lookupResult');
   if (json.status === 'notfound') { box.innerHTML = '<div class="lookup-empty">Chưa có mã này trong hệ thống</div>'; return; }
   if (json.status !== 'ok') { box.innerHTML = '<div class="lookup-empty">Lỗi: ' + esc(json.message || '') + '</div>'; return; }
+  // Backend v16: thêm mã đơn, mã VĐ đi, sàn, loại đơn, link video bóc/đóng (backend cũ không có → tự ẩn)
+  const dong = (k, v) => v ? '<div class="lookup-row"><span class="chip-key">' + k + '</span> ' + esc(v) + '</div>' : '';
+  const link = (k, u) => u && String(u).indexOf('http') === 0 ? '<a class="lookup-link" href="' + esc(u) + '" target="_blank">' + k + '</a>' : '';
   box.innerHTML = json.results.map(r => {
     const isOk = (r.loaiVanDe === 'Bình thường');
     const hasImg = r.anhUrl && r.anhUrl.indexOf('http') === 0;
     const img = hasImg ? '<a href="' + r.anhUrl + '" target="_blank"><img class="lookup-img" src="' + toDriveThumb(r.anhUrl) + '" alt="ảnh"></a>' : '';
+    const vid = link('🎬 Video bóc', r.videoBoc) + link('📦 Video đóng', r.videoDong);
     return '<div class="form-section" style="margin-top:12px;">' +
-      '<div class="form-section-title">' + esc(r.maVanDon) + '</div>' +
+      '<div class="form-section-title">' + esc(r.maVanDonHoan || r.maVanDon) + '</div>' +
       '<div style="padding:0 16px 14px;">' +
         '<div class="lookup-time">🕒 ' + esc(r.thoiGian) + '</div>' +
         '<div class="chips" style="padding:10px 0;">' +
-          '<div class="chip">' + esc(r.nguonHoan) + '</div>' +
-          '<div class="chip">' + esc(r.tinhTrang) + '</div>' +
-          '<div class="chip ' + (isOk ? 'ok' : 'err') + '">' + esc(r.loaiVanDe) + '</div>' +
-        '</div>' + img +
+          (r.nguonHoan ? '<div class="chip">' + esc(r.nguonHoan) + '</div>' : '') +
+          (r.tinhTrang ? '<div class="chip">' + esc(r.tinhTrang) + '</div>' : '') +
+          (r.loaiVanDe ? '<div class="chip ' + (isOk ? 'ok' : 'err') + '">' + esc(r.loaiVanDe) + '</div>' : '') +
+          (r.loaiDon ? '<div class="chip">' + esc(r.loaiDon) + '</div>' : '') +
+        '</div>' +
+        dong('Mã đơn', r.maDon) + dong('Mã VĐ đi', r.maVanDonDi) + dong('Sàn', r.san) +
+        (vid ? '<div class="lookup-links">' + vid + '</div>' : '') + img +
       '</div></div>';
   }).join('');
 }
@@ -573,7 +588,7 @@ function startScan() {
       () => {}
     ).catch(err => {
       showToast('Lỗi camera: ' + err, true);
-      showScreen('loaiScreen');
+      showScreen('nguonScreen');
     });
   }, 200);
 }
@@ -589,7 +604,7 @@ function stopScanner() {
 function cancelScan() {
   stopScanner().then(() => {
     if (scanPurpose === 'lookup') { showScreen('lookupScreen'); }
-    else if (fromForm) { showScreen('formScreen'); } else { showScreen('loaiScreen'); }
+    else if (fromForm) { showScreen('formScreen'); } else { showScreen('nguonScreen'); }
   });
 }
 
@@ -707,7 +722,7 @@ function renderChips() {
   const chips = document.getElementById('formChips');
   chips.innerHTML =
     '<div class="chip"><span class="chip-key">Nguồn</span> ' + esc(state.nguonHoan) + '</div>' +
-    '<div class="chip"><span class="chip-key">Tình trạng</span> ' + esc(state.tinhTrang) + '</div>' +
+    (state.tinhTrang ? '<div class="chip"><span class="chip-key">Tình trạng</span> ' + esc(state.tinhTrang) + '</div>' : '') +
     '<div class="chip ' + (isOk ? 'ok' : 'err') + '">' + (isOk ? '✓ ' : '⚠ ') + esc(state.loaiVanDe) + '</div>';
 }
 function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
