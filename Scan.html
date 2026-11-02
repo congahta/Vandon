@@ -193,6 +193,9 @@
 <script src="hangdoi.js"></script>
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJaJFbmzUlvtTcxB0NmGOOv7PFTUPMLtZzrG4qUhKqy3pz4KnptZKUnHbb6DBwwDRwZA/exec';
+
+// App ≥ 1.4.0 gửi thẳng máy chủ ReturnTrack (02/11/2026): app cho địa chỉ kèm token; app cũ / trình duyệt → Apps Script như cũ
+function apiUrl() { try { if (window.AndroidQueue && AndroidQueue.endpoint) { const u = AndroidQueue.endpoint(); if (u) return u; } } catch (e) {} return SCRIPT_URL; }
 const LIST_MAX = 100;
 
 let user = null;
@@ -487,7 +490,7 @@ function updatePending(n) {
 }
 function khoiDongHangDoi() {
   HangDoi.init({
-    url: SCRIPT_URL,
+    url: apiUrl(),
     onCount: updatePending,
     onSent: (reqId, st, info) => {
       if (st === 'ok') {

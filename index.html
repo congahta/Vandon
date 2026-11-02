@@ -355,6 +355,9 @@
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJaJFbmzUlvtTcxB0NmGOOv7PFTUPMLtZzrG4qUhKqy3pz4KnptZKUnHbb6DBwwDRwZA/exec';
 
+// App ≥ 1.4.0 gửi thẳng máy chủ ReturnTrack (02/11/2026): app cho địa chỉ kèm token; app cũ / trình duyệt → Apps Script như cũ
+function apiUrl() { try { if (window.AndroidQueue && AndroidQueue.endpoint) { const u = AndroidQueue.endpoint(); if (u) return u; } } catch (e) {} return SCRIPT_URL; }
+
 // Loại vấn đề theo tình trạng
 const LOAI_OPTIONS = {
   'Ảo':       ['Đã sử dụng', 'Tráo hàng', 'Thiếu hàng'],
@@ -529,7 +532,7 @@ async function doLookup(code) {
   showScreen('lookupScreen');
   document.getElementById('lookupResult').innerHTML = '<div class="lookup-empty">Đang tra...</div>';
   try {
-    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'findVanDon', maVanDon: code }) });
+    const res = await fetch(apiUrl(), { method: 'POST', body: JSON.stringify({ action: 'findVanDon', maVanDon: code }) });
     const json = await res.json();
     renderLookup(json);
   } catch (e) {
@@ -789,7 +792,7 @@ function updatePending(n) {
 }
 function khoiDongHangDoi() {
   HangDoi.init({
-    url: SCRIPT_URL,
+    url: apiUrl(),
     onCount: updatePending,
     onSent: (reqId, st, info, item) => { if (st === 'err') showToast('Đơn ' + ((item && item.maVanDon) || '') + ' bị từ chối: ' + info, true); }
   });
