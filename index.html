@@ -612,11 +612,56 @@ function cancelScan() {
 }
 
 // ── SAU KHI QUÉT MÃ → mở camera chụp ảnh ──
+// 07/11/2026: CẢNH BÁO TRÙNG — quét xong, trước khi chụp ảnh: mã đã quét hoàn trước đó (máy chủ, hoặc máy này vừa quét chưa kịp gửi)
+// → khung đỏ + rung, nhân viên chọn Bỏ qua (quét mã khác) / Vẫn lưu. Mất mạng / quá 4 giây → cho quét tiếp như cũ (không làm chậm kho).
+function daQuetMay() { try { const o = JSON.parse(localStorage.getItem('vd_da_quet') || '{}'); const han = Date.now() - 3 * 86400e3;
+  Object.keys(o).forEach((k) => { if (o[k].ts < han) delete o[k]; }); return o; } catch (e) { return {}; } }
+function ghiDaQuet(ma, nv) { try { const o = daQuetMay(); o[String(ma).toLowerCase()] = { ts: Date.now(), nv: nv || '' }; localStorage.setItem('vd_da_quet', JSON.stringify(o)); } catch (e) {} }
+async function timTrung(code) {
+  const ra = [];
+  const m = daQuetMay()[String(code).toLowerCase()];
+  if (m) ra.push({ thoiGian: new Date(m.ts).toLocaleString('vi-VN'), nhanVien: m.nv, may: true });
+  try {
+    const ctl = new AbortController(); const hen = setTimeout(() => ctl.abort(), 4000);
+    const res = await fetch(apiUrl(), { method: 'POST', body: JSON.stringify({ action: 'findVanDon', maVanDon: code }), signal: ctl.signal });
+    clearTimeout(hen);
+    const j = await res.json();
+    (j && j.results || []).filter((r) => String(r.maVanDonHoan || r.maVanDon || '').toLowerCase() === String(code).toLowerCase())
+      .forEach((r) => ra.push({ thoiGian: r.thoiGian || '', nhanVien: r.nhanVien || '', loai: r.loaiVanDe || '' }));
+  } catch (e) { /* mất mạng / chậm → bỏ qua kiểm tra */ }
+  return ra;
+}
+function hienTrung(code, ds) {
+  return new Promise((xong) => {
+    const cu = document.getElementById('trungBox'); if (cu) cu.remove();
+    const d = document.createElement('div');
+    d.id = 'trungBox';
+    d.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:20px';
+    const dong = ds.slice(0, 4).map((x) => `<div style="font-size:14px;margin-top:6px">• ${x.thoiGian || ''}${x.nhanVien ? ' — ' + x.nhanVien : ''}${x.loai ? ' (' + x.loai + ')' : ''}${x.may ? ' — vừa quét trên máy này' : ''}</div>`).join('');
+    d.innerHTML = `<div style="background:#1A1D27;border:3px solid #F75C5C;border-radius:16px;padding:20px;max-width:420px;width:100%;color:#fff">
+      <div style="font-size:22px;font-weight:700;color:#F75C5C">⚠ MÃ ĐÃ QUÉT RỒI</div>
+      <div style="font-size:18px;font-weight:600;margin-top:10px;word-break:break-all">${code}</div>
+      <div style="font-size:14px;margin-top:10px;opacity:.85">Đã quét hoàn ${ds.length} lần:</div>${dong}
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button id="trungBo" style="flex:1;padding:16px;border:none;border-radius:10px;background:#F75C5C;color:#fff;font-size:16px;font-weight:700">Bỏ qua</button>
+        <button id="trungLuu" style="flex:1;padding:16px;border:1px solid #555;border-radius:10px;background:#252836;color:#fff;font-size:16px">Vẫn lưu</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('#trungBo').onclick = () => { d.remove(); xong(false); };
+    d.querySelector('#trungLuu').onclick = () => { d.remove(); xong(true); };
+  });
+}
 function onCodeDetected(code) {
   state.maVanDon = code;
   document.getElementById('displayMaVanDon').value = code;
   document.getElementById('cameraCode').textContent = '📦 ' + code;
-  stopScanner().then(() => {
+  stopScanner().then(async () => {
+    const ds = await timTrung(code);
+    if (ds.length) {
+      navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]);
+      const luu = await hienTrung(code, ds);
+      if (!luu) { state.maVanDon = ''; document.getElementById('displayMaVanDon').value = ''; setTimeout(startScan, 200); return; }
+    }
     setTimeout(() => openCameraStream(false), 300);
   });
 }
@@ -769,6 +814,7 @@ function handleSubmit() {
     reqId: 'v2:' + maMay() + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 8)
   };
   enqueueUpload(payload);
+  ghiDaQuet(state.maVanDon, state.user && state.user.name);   // 07/11/2026: nhớ 3 ngày để báo trùng cả khi chưa gửi lên kịp
   // Cập nhật thống kê lạc quan + mở scanner ngay, KHÔNG chờ lưu xong
   if (state.loaiVanDe === 'Bình thường') state.statsOk++; else state.statsErr++;
   saveStats(); updateStats();
