@@ -625,7 +625,13 @@ function cancelScan() {
 // → khung đỏ + rung, nhân viên chọn Bỏ qua (quét mã khác) / Vẫn lưu. Mất mạng / quá 4 giây → cho quét tiếp như cũ (không làm chậm kho).
 function daQuetMay() { try { const o = JSON.parse(localStorage.getItem('vd_da_quet') || '{}'); const han = Date.now() - 3 * 86400e3;
   Object.keys(o).forEach((k) => { if (o[k].ts < han) delete o[k]; }); return o; } catch (e) { return {}; } }
-function ghiDaQuet(ma, nv) { try { const o = daQuetMay(); o[String(ma).toLowerCase()] = { ts: Date.now(), nv: nv || '' }; localStorage.setItem('vd_da_quet', JSON.stringify(o)); } catch (e) {} }
+function ghiDaQuet(ma, nv, reqId) { try { const o = daQuetMay(); o[String(ma).toLowerCase()] = { ts: Date.now(), nv: nv || '', reqId: reqId || '' }; localStorage.setItem('vd_da_quet', JSON.stringify(o)); } catch (e) {} }
+// 26/11/2026 (người dùng): máy CHỈ nhớ đơn CHƯA gửi lên máy chủ — gửi xong là xoá khỏi máy (đã có trên máy chủ thì máy chủ tự báo trùng;
+// dòng đã xoá trên web thì quét lại không bị báo trùng nữa). Gửi thành công 1 đơn → xoá đơn đó; hàng đợi (web + app) trống → xoá hết.
+function boDaQuet(reqId) { try { const o = daQuetMay(); let doi = false;
+  Object.keys(o).forEach((k) => { if (!reqId || o[k].reqId === reqId) { delete o[k]; doi = true; } });
+  if (doi) localStorage.setItem('vd_da_quet', JSON.stringify(o)); } catch (e) {} }
+function soDonApp() { try { return window.AndroidQueue && window.AndroidQueue.count ? (Number(window.AndroidQueue.count()) || 0) : 0; } catch (e) { return 0; } }
 // 10/11/2026: chỉ phần MÁY NÀY (tức thì) — phần máy chủ chạy song song, không chặn camera
 function trungMay(code) {
   const m = daQuetMay()[String(code).toLowerCase()];
@@ -976,7 +982,7 @@ async function handleSubmit() {
     reqId: 'v2:' + maMay() + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 8)
   };
   enqueueUpload(payload);
-  ghiDaQuet(state.maVanDon, state.user && state.user.name);   // 07/11/2026: nhớ 3 ngày để báo trùng cả khi chưa gửi lên kịp
+  ghiDaQuet(state.maVanDon, state.user && state.user.name, payload.reqId);   // nhớ tới khi gửi lên máy chủ xong (26/11/2026)
   // Cập nhật thống kê lạc quan + mở scanner ngay, KHÔNG chờ lưu xong
   if (state.loaiVanDe === 'Bình thường') state.statsOk++; else state.statsErr++;
   saveStats(); updateStats();
@@ -1001,8 +1007,11 @@ function updatePending(n) {
 function khoiDongHangDoi() {
   HangDoi.init({
     url: apiUrl(),
-    onCount: updatePending,
-    onSent: (reqId, st, info, item) => { if (st === 'err') showToast('Đơn ' + ((item && item.maVanDon) || '') + ' bị từ chối: ' + info, true); }
+    onCount: (n) => { updatePending(n); if (!n && !soDonApp()) boDaQuet(); },   // hết đơn chờ gửi → máy không cần nhớ gì
+    onSent: (reqId, st, info, item) => {
+      if (st === 'ok') boDaQuet(reqId);
+      if (st === 'err') showToast('Đơn ' + ((item && item.maVanDon) || '') + ' bị từ chối: ' + info, true);
+    }
   });
   // Đơn còn trong hàng đợi kiểu cũ (localStorage vd_queue) → chuyển sang hàng đợi mới, mã yêu cầu theo kiểu cũ
   // (giống máy chủ tự dựng) để nếu bản cũ đã ghi rồi thì máy chủ nhận ra, không ghi trùng.
