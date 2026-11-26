@@ -435,7 +435,12 @@ function saveStats() { const today = new Date().toDateString(); localStorage.set
 function updateStats() { const ok = document.getElementById('statOk'); if (!ok) return; ok.textContent = state.statsOk; document.getElementById('statErr').textContent = state.statsErr; document.getElementById('statTotal').textContent = state.statsOk + state.statsErr; }
 
 // ── SCREEN ──
-function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active');
+  // 26/11/2026: app chèn code chụp ảnh native (window.onNativePhoto) — chụp xong chỉ showScreen('formScreen'), không gọi kiểm tra sau chụp
+  // → báo trùng (máy chủ) + cảnh báo mã không thuộc shop không chạy trong app. Vào form mà đã có ảnh + mã → kiểm tra (có cờ, không báo 2 lần).
+  if (id === 'formScreen' && typeof state !== 'undefined' && state.photoBase64 && state.maVanDon) setTimeout(kiemTrungSauChup, 0);
+}
 
 // ── BƯỚC CHỌN PHÂN LOẠI ──
 // Quét hoàn 1 bước (người dùng chốt 23/10/2026): chỉ chọn Nguồn → quét → chụp → lưu "Bình thường".
