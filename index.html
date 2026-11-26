@@ -692,6 +692,7 @@ function onCodeDetected(code) {
   state.trungP = timTrung(code);
   state.trungDaHoi = false;
   state.kiemDaHoi = false;
+  state.kiemChupP = null; state.kiemChupMa = '';
   stopScanner().then(async () => {
     const ds = trungMay(code);
     if (ds.length) {
@@ -704,25 +705,33 @@ function onCodeDetected(code) {
   });
 }
 // sau khi chụp: kết quả máy chủ (thường đã có từ lúc đang chụp) → mã đã quét rồi thì hỏi Bỏ qua / Vẫn lưu
-async function kiemTrungSauChup() {
-  if (!state.trungP || !state.maVanDon) return;
+// 26/11/2026: 1 LƯỢT cho mỗi mã (vào form tự chạy + bấm Lưu dùng chung → không hiện 2 khung). true = được lưu, false = đã chọn quét lại.
+function kiemTrungSauChup() {
+  if (!state.trungP || !state.maVanDon) return Promise.resolve(true);
+  if (state.kiemChupP && state.kiemChupMa === state.maVanDon) return state.kiemChupP;
+  state.kiemChupMa = state.maVanDon;
+  state.kiemChupP = kiemSauChupThat();
+  return state.kiemChupP;
+}
+async function kiemSauChupThat() {
   const code = state.maVanDon;
   const ds = await state.trungP;
-  if (code !== state.maVanDon) return;
-  const quetLai = () => { resetForm(); state.maVanDon = ''; document.getElementById('displayMaVanDon').value = ''; setTimeout(startScan, 200); };
+  if (code !== state.maVanDon) return true;
+  const quetLai = () => { resetForm(); state.maVanDon = ''; document.getElementById('displayMaVanDon').value = ''; setTimeout(startScan, 200); return false; };
   if (!state.trungDaHoi && ds.length) {
     state.trungDaHoi = true;
     navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]);
     const luu = await hienTrung(code, ds);
-    if (!luu) { quetLai(); return; }
+    if (!luu) return quetLai();
   }
   // 26/11/2026: mã không thuộc đơn nào của shop → cảnh báo (1 lần cho mỗi mã quét)
   if (!state.kiemDaHoi && ds.kiem && code === state.maVanDon) {
     state.kiemDaHoi = true;
     navigator.vibrate && navigator.vibrate([600, 200, 600]);
     const luu = await hienCanh(code, ds.kiem);
-    if (!luu) quetLai();
+    if (!luu) return quetLai();
   }
+  return true;
 }
 
 // ── CAMERA CHỤP ẢNH ──
@@ -855,12 +864,30 @@ function goHome() {
 }
 
 // ── SUBMIT → đưa vào hàng đợi, mở scanner ngay, gửi ngầm ──
-function handleSubmit() {
-  state.maVanDon = (document.getElementById('displayMaVanDon').value || '').trim();
+async function handleSubmit() {
+  if (state.dangLuu) return;
+  const ma = (document.getElementById('displayMaVanDon').value || '').trim();
+  // 26/11/2026 (người dùng): cảnh báo về sau ~1–5 giây → nhân viên nhanh tay bấm Lưu là lọt. Bấm Lưu khi máy chủ chưa trả lời → chờ (tối đa 8 giây)
+  // rồi qua bước kiểm tra (báo trùng / mã không thuộc shop) mới lưu. Mã sửa tay khác mã đã quét → không có kết quả để chờ, lưu như cũ.
+  if (ma && state.trungP && ma === state.maVanDon && state.photoBase64) {
+    const nut = document.querySelector('.btn-submit'); const chu = nut ? nut.innerHTML : '';
+    state.dangLuu = true;
+    if (nut) { nut.disabled = true; nut.innerHTML = '⏳ Đang kiểm tra mã…'; }
+    let ok = true;
+    try {
+      const ds = await Promise.race([state.trungP, new Promise((r) => setTimeout(() => r(null), 8000))]);
+      if (ds) ok = await kiemTrungSauChup();
+    } catch (e) { /* lỗi bất ngờ → lưu như cũ */ }
+    state.dangLuu = false;
+    if (nut) { nut.disabled = false; nut.innerHTML = chu; }
+    if (!ok) return;                          // đã chọn Quét lại / Bỏ qua
+    if ((document.getElementById('displayMaVanDon').value || '').trim() !== ma) return;   // form đã đổi trong lúc chờ
+  }
+  state.maVanDon = ma;
   if (!state.maVanDon) { showToast('Vui lòng quét hoặc nhập mã!', true); return; }
   if (!state.photoBase64) { showToast('Vui lòng chụp ảnh!', true); return; }
   if (!state.loaiVanDe) { showToast('Chưa chọn loại!', true); return; }
-  state.trungP = null;
+  state.trungP = null; state.kiemChupP = null; state.kiemChupMa = '';
   const payload = {
     action: 'addVanDon',
     maVanDon: state.maVanDon,
