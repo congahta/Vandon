@@ -225,6 +225,8 @@
     </div>
     <!-- 24/11/2026 (người dùng chốt, MPS + khách): nguồn hoàn KHÔNG tách Long J&T / Khác nữa — mọi đơn ghi nguồn "Hàng trả về" -->
     <button class="choice-btn" onclick="selectNguon('Hàng trả về')"><span class="choice-icon">📦</span> Quét hàng trả về</button>
+    <!-- 26/11/2026: danh sách mã của shop đã kéo về máy (tra ngay sau khi quét) -->
+    <div id="dsMaTT" style="font-size:12px;opacity:.65;text-align:center;margin-top:6px"></div>
   </div>
 </div>
 
@@ -418,6 +420,7 @@ function enterApp() {
   resetAll();
   showScreen('nguonScreen');
   loadStats();
+  taiDsMa();          // 26/11/2026: kéo sẵn danh sách mã của shop về máy
 }
 function handleLogout() {
   localStorage.removeItem('vd_user'); state.user = null;
@@ -448,6 +451,7 @@ function showScreen(id) {
 // → ghi đè Tình trạng / Loại vấn đề của lần quét gần nhất. (Màn aoScreen / loaiScreen giữ lại nhưng không dùng nữa.)
 const LOAI_MAC_DINH = 'Bình thường';
 function selectNguon(val) {
+  taiDsMa();          // 26/11/2026: quá 30 phút thì kéo lại (chạy nền, không chờ)
   state.nguonHoan = val;
   state.tinhTrang = '';
   state.loaiVanDe = LOAI_MAC_DINH;
@@ -683,6 +687,52 @@ function hienCanh(code, k) {
     d.querySelector('#canhLuu').onclick = () => { d.remove(); xong(true); };
   });
 }
+// 26/11/2026 (người dùng chốt): DANH SÁCH MÃ của shop kéo về máy khi mở trang quét (máy chủ rt_ds_ma: mã vận đơn + mã đơn 90 ngày,
+// Hoàn+Bom, Viettel Post ngoài sàn, yêu cầu trả Shopee — ~150 nghìn mã, nén ~1 MB) → quét xong tra NGAY trên máy:
+// không có → cảnh báo trước khi mở camera. Chưa có danh sách (mất mạng / máy chủ cũ) → máy chủ kiểm sau khi chụp như trước.
+const DSMA_HAN_LAM_MOI = 30 * 60e3, DSMA_HAN_DUNG = 3 * 3600e3;
+let DSMA = null;                    // { set, luc (giờ máy chủ), t (ms lúc kéo), n }
+let dsMaDangTai = null;
+function dsMaHienTT() {
+  const el = document.getElementById('dsMaTT'); if (!el) return;
+  el.textContent = DSMA ? `Dữ liệu đơn lúc ${String(DSMA.luc || '').slice(11, 16)} · ${DSMA.n.toLocaleString('vi-VN')} mã` : (dsMaDangTai ? 'Đang tải dữ liệu đơn…' : '');
+}
+function dsMaNap(ds, luc, t) {
+  const arr = String(ds || '').split('\n').filter(Boolean);
+  DSMA = { set: new Set(arr), luc: luc || '', t: t || Date.now(), n: arr.length };
+}
+function taiDsMa(ep) {
+  const url = apiUrl();
+  if (!/\/rt\/api\//.test(url)) return Promise.resolve();          // trình duyệt / máy chủ Apps Script cũ → không có
+  if (!ep && DSMA && Date.now() - DSMA.t < DSMA_HAN_LAM_MOI) { dsMaHienTT(); return Promise.resolve(); }
+  if (dsMaDangTai) return dsMaDangTai;
+  dsMaDangTai = (async () => {
+    dsMaHienTT();
+    try {
+      const ctl = new AbortController(); const hen = setTimeout(() => ctl.abort(), 45000);
+      const res = await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'dsMa' }), signal: ctl.signal });
+      clearTimeout(hen);
+      const j = await res.json();
+      if (j && j.status === 'ok' && typeof j.ds === 'string' && j.ds.length) {
+        const t = Date.now();
+        dsMaNap(j.ds, j.luc, t);     // chỉ giữ trong bộ nhớ (2 MB — không lưu localStorage: gần đầy hạn 5 MB làm hỏng ghi dữ liệu khác của trang)
+      }
+    } catch (e) { /* mất mạng → giữ danh sách cũ (nếu có), máy chủ kiểm sau khi chụp */ }
+    dsMaDangTai = null;
+    dsMaHienTT();
+  })();
+  return dsMaDangTai;
+}
+// true = mã của shop · false = không có trong danh sách · null = chưa có danh sách (để máy chủ kiểm)
+function traDsMa(code) {
+  if (!DSMA || Date.now() - DSMA.t > DSMA_HAN_DUNG) return null;
+  return DSMA.set.has(String(code || '').trim().toUpperCase());
+}
+function canhMay(code) {
+  return /^893\d{10}$/.test(String(code).trim())
+    ? { canh: true, loai: 'ma_sp', tieu_de: 'ĐÂY LÀ MÃ VẠCH SẢN PHẨM', noi_dung: 'Mã này là mã vạch in trên hộp sản phẩm, không phải mã vận đơn. Quét lại mã vận đơn trên tem.' }
+    : { canh: true, loai: 'khong_thay', tieu_de: 'KHÔNG THẤY ĐƠN NÀY CỦA SHOP', noi_dung: 'Mã này không có trong dữ liệu đơn hàng của shop. Kiểm tra lại: mã vạch / QR lỗi, app đọc sai, hoặc kiện không phải của shop.' };
+}
 function onCodeDetected(code) {
   state.maVanDon = code;
   document.getElementById('displayMaVanDon').value = code;
@@ -699,6 +749,14 @@ function onCodeDetected(code) {
       state.trungDaHoi = true;
       navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]);
       const luu = await hienTrung(code, ds);
+      if (!luu) { state.maVanDon = ''; document.getElementById('displayMaVanDon').value = ''; setTimeout(startScan, 200); return; }
+    }
+    // 26/11/2026: tra danh sách mã trên máy (tức thì) → không có → cảnh báo NGAY, trước khi mở camera
+    const coMa = traDsMa(code);
+    if (coMa !== null) state.kiemDaHoi = true;          // đã kiểm bằng danh sách → máy chủ không báo lại lần nữa
+    if (coMa === false) {
+      navigator.vibrate && navigator.vibrate([600, 200, 600]);
+      const luu = await hienCanh(code, canhMay(code));
       if (!luu) { state.maVanDon = ''; document.getElementById('displayMaVanDon').value = ''; setTimeout(startScan, 200); return; }
     }
     setTimeout(() => openCameraStream(false), 100);
