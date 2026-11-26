@@ -631,6 +631,8 @@ async function timTrung(code) {
     const j = await res.json();
     (j && j.results || []).filter((r) => String(r.maVanDonHoan || r.maVanDon || '').toLowerCase() === String(code).toLowerCase())
       .forEach((r) => ra.push({ thoiGian: r.thoiGian || '', nhanVien: r.nhanVien || '', loai: r.loaiVanDe || '' }));
+    // 26/11/2026: máy chủ kiểm mã có thuộc đơn nào của shop không (kiemMa.canh = true → cảnh báo). Máy chủ cũ không gửi → không báo.
+    if (j && j.kiemMa && j.kiemMa.canh) ra.kiem = j.kiemMa;
   } catch (e) { /* mất mạng / chậm → bỏ qua kiểm tra */ }
   return ra;
 }
@@ -654,6 +656,28 @@ function hienTrung(code, ds) {
     d.querySelector('#trungLuu').onclick = () => { d.remove(); xong(true); };
   });
 }
+// 26/11/2026 (người dùng chốt): mã KHÔNG thuộc đơn nào của shop (mã vạch / QR lỗi, app đọc sai, kiện không phải của shop, mã vạch sản phẩm)
+// → khung cảnh báo + rung sau khi chụp, trước khi lưu. Quét lại / Vẫn lưu (không chặn lưu — dữ liệu sàn có thể chưa kịp về).
+function hienCanh(code, k) {
+  return new Promise((xong) => {
+    const cu = document.getElementById('canhBox'); if (cu) cu.remove();
+    const d = document.createElement('div');
+    d.id = 'canhBox';
+    d.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:20px';
+    const e = (x) => String(x || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    d.innerHTML = `<div style="background:#1A1D27;border:3px solid #F5A623;border-radius:16px;padding:20px;max-width:420px;width:100%;color:#fff">
+      <div style="font-size:21px;font-weight:700;color:#F5A623">⚠ ${e(k.tieu_de || 'KHÔNG THẤY ĐƠN NÀY CỦA SHOP')}</div>
+      <div style="font-size:18px;font-weight:600;margin-top:10px;word-break:break-all">${e(code)}</div>
+      <div style="font-size:15px;margin-top:10px;opacity:.9;line-height:1.45">${e(k.noi_dung || '')}</div>
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button id="canhQuet" style="flex:1;padding:16px;border:none;border-radius:10px;background:#F5A623;color:#111;font-size:16px;font-weight:700">Quét lại</button>
+        <button id="canhLuu" style="flex:1;padding:16px;border:1px solid #555;border-radius:10px;background:#252836;color:#fff;font-size:16px">Vẫn lưu</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('#canhQuet').onclick = () => { d.remove(); xong(false); };
+    d.querySelector('#canhLuu').onclick = () => { d.remove(); xong(true); };
+  });
+}
 function onCodeDetected(code) {
   state.maVanDon = code;
   document.getElementById('displayMaVanDon').value = code;
@@ -662,6 +686,7 @@ function onCodeDetected(code) {
   // Giờ: trùng trên MÁY NÀY → báo ngay; hỏi máy chủ chạy SONG SONG, camera mở luôn; máy chủ thấy trùng → báo sau khi chụp, trước khi lưu.
   state.trungP = timTrung(code);
   state.trungDaHoi = false;
+  state.kiemDaHoi = false;
   stopScanner().then(async () => {
     const ds = trungMay(code);
     if (ds.length) {
@@ -675,14 +700,24 @@ function onCodeDetected(code) {
 }
 // sau khi chụp: kết quả máy chủ (thường đã có từ lúc đang chụp) → mã đã quét rồi thì hỏi Bỏ qua / Vẫn lưu
 async function kiemTrungSauChup() {
-  if (state.trungDaHoi || !state.trungP || !state.maVanDon) return;
+  if (!state.trungP || !state.maVanDon) return;
   const code = state.maVanDon;
   const ds = await state.trungP;
-  if (code !== state.maVanDon || state.trungDaHoi || !ds.length) return;
-  state.trungDaHoi = true;
-  navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]);
-  const luu = await hienTrung(code, ds);
-  if (!luu) { resetForm(); state.maVanDon = ''; document.getElementById('displayMaVanDon').value = ''; setTimeout(startScan, 200); }
+  if (code !== state.maVanDon) return;
+  const quetLai = () => { resetForm(); state.maVanDon = ''; document.getElementById('displayMaVanDon').value = ''; setTimeout(startScan, 200); };
+  if (!state.trungDaHoi && ds.length) {
+    state.trungDaHoi = true;
+    navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]);
+    const luu = await hienTrung(code, ds);
+    if (!luu) { quetLai(); return; }
+  }
+  // 26/11/2026: mã không thuộc đơn nào của shop → cảnh báo (1 lần cho mỗi mã quét)
+  if (!state.kiemDaHoi && ds.kiem && code === state.maVanDon) {
+    state.kiemDaHoi = true;
+    navigator.vibrate && navigator.vibrate([600, 200, 600]);
+    const luu = await hienCanh(code, ds.kiem);
+    if (!luu) quetLai();
+  }
 }
 
 // ── CAMERA CHỤP ẢNH ──
