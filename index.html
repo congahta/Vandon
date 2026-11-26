@@ -224,9 +224,9 @@
       <div class="choice-sub">Bấm để quét vận đơn hàng trả về</div>
     </div>
     <!-- 24/11/2026 (người dùng chốt, MPS + khách): nguồn hoàn KHÔNG tách Long J&T / Khác nữa — mọi đơn ghi nguồn "Hàng trả về" -->
-    <button class="choice-btn" onclick="selectNguon('Hàng trả về')"><span class="choice-icon">📦</span> Quét hàng trả về</button>
-    <!-- 26/11/2026: danh sách mã của shop đã kéo về máy (tra ngay sau khi quét) -->
-    <div id="dsMaTT" style="font-size:12px;opacity:.65;text-align:center;margin-top:6px"></div>
+    <button class="choice-btn" id="btnQuetTra" onclick="selectNguon('Hàng trả về')"><span class="choice-icon">📦</span> Quét hàng trả về</button>
+    <!-- 26/11/2026: danh sách mã của shop đã kéo về máy (tra ngay sau khi quét). Đang tải lần đầu → nút trên khoá; lỗi → mở + chạm dòng này để thử lại -->
+    <div id="dsMaTT" onclick="if (DSMA_LOI) taiDsMa(true)" style="font-size:12px;opacity:.65;text-align:center;margin-top:6px"></div>
   </div>
 </div>
 
@@ -692,10 +692,23 @@ function hienCanh(code, k) {
 // không có → cảnh báo trước khi mở camera. Chưa có danh sách (mất mạng / máy chủ cũ) → máy chủ kiểm sau khi chụp như trước.
 const DSMA_HAN_LAM_MOI = 30 * 60e3, DSMA_HAN_DUNG = 3 * 3600e3;
 let DSMA = null;                    // { set, luc (giờ máy chủ), t (ms lúc kéo), n }
-let dsMaDangTai = null;
+let dsMaDangTai = null, DSMA_LOI = false;
+// 26/11/2026 (người dùng): nút "Quét hàng trả về" chỉ bấm được khi đã có dữ liệu. Đang tải LẦN ĐẦU (chưa có danh sách) → khoá nút;
+// tải xong → mở; tải lỗi / quá 45 giây → VẪN MỞ (kho không bị kẹt, máy chủ kiểm sau khi chụp như cũ) + "chạm để thử lại".
+// Làm mới định kỳ (đã có danh sách) chạy nền, không khoá nút.
+const NUT_QUET_TRA = '<span class="choice-icon">📦</span> Quét hàng trả về';
 function dsMaHienTT() {
-  const el = document.getElementById('dsMaTT'); if (!el) return;
-  el.textContent = DSMA ? `Dữ liệu đơn lúc ${String(DSMA.luc || '').slice(11, 16)} · ${DSMA.n.toLocaleString('vi-VN')} mã` : (dsMaDangTai ? 'Đang tải dữ liệu đơn…' : '');
+  const el = document.getElementById('dsMaTT');
+  const nut = document.getElementById('btnQuetTra');
+  const khoa = !DSMA && !!dsMaDangTai;
+  if (nut) {
+    nut.disabled = khoa;
+    nut.style.opacity = khoa ? '.45' : '';
+    nut.innerHTML = khoa ? '<span class="choice-icon">⏳</span> Đang tải dữ liệu đơn…' : NUT_QUET_TRA;
+  }
+  if (!el) return;
+  el.textContent = DSMA ? `Dữ liệu đơn lúc ${String(DSMA.luc || '').slice(11, 16)} · ${DSMA.n.toLocaleString('vi-VN')} mã`
+    : dsMaDangTai ? 'Đang tải dữ liệu đơn…' : DSMA_LOI ? '⚠ Không tải được dữ liệu đơn — vẫn quét được (kiểm sau khi chụp). Chạm để thử lại' : '';
 }
 function dsMaNap(ds, luc, t) {
   const arr = String(ds || '').split('\n').filter(Boolean);
@@ -707,20 +720,22 @@ function taiDsMa(ep) {
   if (!ep && DSMA && Date.now() - DSMA.t < DSMA_HAN_LAM_MOI) { dsMaHienTT(); return Promise.resolve(); }
   if (dsMaDangTai) return dsMaDangTai;
   dsMaDangTai = (async () => {
-    dsMaHienTT();
+    await null;                       // để dsMaDangTai được gán trước khi cập nhật nút (khoá nút lúc đang tải)
     try {
       const ctl = new AbortController(); const hen = setTimeout(() => ctl.abort(), 45000);
       const res = await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'dsMa' }), signal: ctl.signal });
       clearTimeout(hen);
       const j = await res.json();
-      if (j && j.status === 'ok' && typeof j.ds === 'string' && j.ds.length) {
+      DSMA_LOI = !(j && j.status === 'ok' && typeof j.ds === 'string' && j.ds.length);
+      if (!DSMA_LOI) {
         const t = Date.now();
         dsMaNap(j.ds, j.luc, t);     // chỉ giữ trong bộ nhớ (2 MB — không lưu localStorage: gần đầy hạn 5 MB làm hỏng ghi dữ liệu khác của trang)
       }
-    } catch (e) { /* mất mạng → giữ danh sách cũ (nếu có), máy chủ kiểm sau khi chụp */ }
+    } catch (e) { DSMA_LOI = true; /* mất mạng → giữ danh sách cũ (nếu có), máy chủ kiểm sau khi chụp */ }
     dsMaDangTai = null;
     dsMaHienTT();
   })();
+  dsMaHienTT();                       // khoá nút + "Đang tải dữ liệu đơn…" (lần đầu, chưa có danh sách)
   return dsMaDangTai;
 }
 // true = mã của shop · false = không có trong danh sách · null = chưa có danh sách (để máy chủ kiểm)
